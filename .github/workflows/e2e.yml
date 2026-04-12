@@ -1,0 +1,65 @@
+name: E2E Tests
+
+# E2E tests are run on developer machines only.
+# This workflow is kept for future CI enablement.
+# All services use the unified docker-compose.yml from the system repo.
+
+on:
+  workflow_dispatch:   # manual trigger from GitHub UI only
+
+permissions:
+  contents: read
+  packages: read
+
+env:
+  REGISTRY: ghcr.io
+  KOALIXCRM_DIR: ./..
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    name: E2E Browser Tests (Selenium)
+
+    steps:
+      - name: Checkout koalixcrm
+        uses: actions/checkout@v4
+        with:
+          repository: KoalixSwitzerland/koalixcrm
+          path: koalixcrm
+
+      - name: Pull system config from GHCR
+        env:
+          CONFIG_IMAGE: ghcr.io/${{ github.repository_owner }}/koalixcrm_system_config
+        run: |
+          CONFIG_IMAGE_LC=$(echo "$CONFIG_IMAGE" | tr '[:upper:]' '[:lower:]')
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
+          docker create --name tmp-config "${CONFIG_IMAGE_LC}:main" /dev/null
+          mkdir -p koalixcrm_system
+          docker cp tmp-config:/ koalixcrm_system/
+          docker rm tmp-config
+
+      - name: Create secrets.env
+        run: |
+          mkdir -p koalixcrm_data/db
+          echo "${{ secrets.KOALIXCRM_SECRETS_ENV }}" > koalixcrm_data/secrets.env
+
+      - name: Run E2E tests
+        run: |
+          docker compose \
+            -f ./koalixcrm_system/docker-compose.yml \
+            --profile e2e run --rm e2e-runner
+
+      - name: Upload Selenium screenshots on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: selenium-e2e-results
+          path: test_results/
+          if-no-files-found: warn
+
+      - name: Teardown
+        if: always()
+        run: |
+          docker compose \
+            -f ./koalixcrm_system/docker-compose.yml \
+            --profile e2e down -v

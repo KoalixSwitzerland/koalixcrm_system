@@ -6,3 +6,8 @@
 # Secrets (never commit)
 secrets.env
 secrets.env.local
+
+# IDE
+.idea/
+.vscode/
+*.swp

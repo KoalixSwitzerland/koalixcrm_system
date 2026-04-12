@@ -6,14 +6,14 @@
 # Local service replacements:
 #   S3   -> MinIO      (API ${MINIO_API_PORT:-9010}, console ${MINIO_CONSOLE_PORT:-9011})
 #   SQS  -> ElasticMQ  (API 9324, UI 9325)
-#   DB   -> PostgreSQL (port ${POSTGRES_PORT:-5432})
+#   DB   -> SQLite     (file-based, mounted from host)
 #   OIDC -> Disabled locally (no Keycloak — see ADR: internal/external URL mismatch
 #           in safety-critical auth code makes local Keycloak unreliable)
 #
 # Profiles:
 #   unit-django     — Django backend unit tests (SQLite, mocked externals)
 #   unit-celery     — Celery microservice unit tests (mocked externals)
-#   integration     — Backend + Celery + infra (PostgreSQL, MinIO, ElasticMQ)
+#   integration     — Backend + Celery + infra (SQLite, MinIO, ElasticMQ)
 #   e2e             — Full stack + Selenium + allure report
 #   dev             — Long-running dev environment with auto-reload
 #
@@ -63,26 +63,6 @@
 # --- Infrastructure services (shared by integration, e2e, dev) ---------------
 
 services:
-
-  # --- PostgreSQL (application database) ---
-  postgres:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_DB: koalixcrm
-      POSTGRES_USER: koalixcrm
-      POSTGRES_PASSWORD: koalixcrm
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    networks:
-      - koalixcrm-net
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U koalixcrm"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-    profiles: [integration, e2e, dev]
 
   # --- MinIO (S3-compatible object storage) ---
   minio:
@@ -160,13 +140,9 @@ services:
       - DJANGO_SECRET_KEY=django-insecure-local-dev-key-DO-NOT-USE-IN-PRODUCTION
       - ALLOWED_HOSTS=localhost,backend,host.docker.internal,127.0.0.1
       - PYTHONUNBUFFERED=1
-      # --- Database (PostgreSQL) ---
-      - DB_CHOICE=postgresql
-      - POSTGRES_DB=koalixcrm
-      - POSTGRES_USER=koalixcrm
-      - POSTGRES_PASSWORD=koalixcrm
-      - POSTGRES_HOST=postgres
-      - POSTGRES_PORT=5432
+      # --- Database (SQLite) ---
+      - DB_CHOICE=sqlite3
+      - SQLITE_DB_FILE=/db/db.sqlite3
       # --- Local S3 (MinIO) ---
       - S3_ENDPOINT_URL=http://minio:9000
       - AWS_ACCESS_KEY_ID=minioadmin
@@ -196,8 +172,6 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
-      postgres:
-        condition: service_healthy
       minio-setup:
         condition: service_completed_successfully
       elasticmq:
@@ -221,13 +195,9 @@ services:
       - DJANGO_SETTINGS_MODULE=projectsettings.settings.development_docker_settings
       - DJANGO_SECRET_KEY=django-insecure-local-dev-key-DO-NOT-USE-IN-PRODUCTION
       - PYTHONUNBUFFERED=1
-      # --- Database (PostgreSQL) ---
-      - DB_CHOICE=postgresql
-      - POSTGRES_DB=koalixcrm
-      - POSTGRES_USER=koalixcrm
-      - POSTGRES_PASSWORD=koalixcrm
-      - POSTGRES_HOST=postgres
-      - POSTGRES_PORT=5432
+      # --- Database (SQLite) ---
+      - DB_CHOICE=sqlite3
+      - SQLITE_DB_FILE=/db/db.sqlite3
       # --- Local S3 (MinIO) ---
       - S3_ENDPOINT_URL=http://minio:9000
       - AWS_ACCESS_KEY_ID=minioadmin
@@ -246,8 +216,6 @@ services:
       - ${KOALIXCRM_DB_HOST_DIR:-${KOALIXCRM_DB_DIR:-./../koalixcrm_data}}/db:/db
     working_dir: /usr/src/app
     depends_on:
-      postgres:
-        condition: service_healthy
       minio-setup:
         condition: service_completed_successfully
       elasticmq:
@@ -393,13 +361,9 @@ services:
       - DJANGO_SECRET_KEY=django-insecure-local-dev-key-DO-NOT-USE-IN-PRODUCTION
       - ALLOWED_HOSTS=localhost,backend,host.docker.internal,127.0.0.1
       - PYTHONUNBUFFERED=1
-      # --- Database (PostgreSQL) ---
-      - DB_CHOICE=postgresql
-      - POSTGRES_DB=koalixcrm
-      - POSTGRES_USER=koalixcrm
-      - POSTGRES_PASSWORD=koalixcrm
-      - POSTGRES_HOST=postgres
-      - POSTGRES_PORT=5432
+      # --- Database (SQLite) ---
+      - DB_CHOICE=sqlite3
+      - SQLITE_DB_FILE=/db/db.sqlite3
       # --- Local S3 (MinIO) ---
       - S3_ENDPOINT_URL=http://minio:9000
       - AWS_ACCESS_KEY_ID=minioadmin
@@ -456,13 +420,9 @@ services:
       - DJANGO_SECRET_KEY=django-insecure-local-dev-key-DO-NOT-USE-IN-PRODUCTION
       - ALLOWED_HOSTS=localhost,backend,host.docker.internal,127.0.0.1
       - PYTHONUNBUFFERED=1
-      # --- Database (PostgreSQL) ---
-      - DB_CHOICE=postgresql
-      - POSTGRES_DB=koalixcrm
-      - POSTGRES_USER=koalixcrm
-      - POSTGRES_PASSWORD=koalixcrm
-      - POSTGRES_HOST=postgres
-      - POSTGRES_PORT=5432
+      # --- Database (SQLite) ---
+      - DB_CHOICE=sqlite3
+      - SQLITE_DB_FILE=/db/db.sqlite3
       # --- Local S3 (MinIO) ---
       - S3_ENDPOINT_URL=http://minio:9000
       - AWS_ACCESS_KEY_ID=minioadmin
@@ -513,7 +473,6 @@ services:
 # --- Volumes & networks ------------------------------------------------------
 
 volumes:
-  postgres_data:
   minio_data:
   allure_results:
   allure_report:
