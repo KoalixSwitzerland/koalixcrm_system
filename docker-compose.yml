@@ -105,8 +105,8 @@ services:
   elasticmq:
     image: softwaremill/elasticmq-native:latest
     ports:
-      - "9324:9324"   # SQS API
-      - "9325:9325"   # Web UI
+      - "${ELASTICMQ_PORT:-9324}:9324"   # SQS API
+      - "${ELASTICMQ_UI_PORT:-9325}:9325"   # Web UI
     volumes:
       - ${KOALIXCRM_SYSTEM_HOST_DIR:-${KOALIXCRM_SYSTEM_DIR:-.}}/docker/elasticmq.conf:/opt/elasticmq.conf:ro
     networks:
@@ -164,7 +164,7 @@ services:
     expose:
       - "8000"
     ports:
-      - "8000:8000"
+      - "${DJANGO_PORT:-8000}:8000"
     volumes:
       - ${KOALIXCRM_HOST_DIR:-${KOALIXCRM_DIR:-./../koalixcrm}}:/usr/src/app
       - ${KOALIXCRM_DB_HOST_DIR:-${KOALIXCRM_DB_DIR:-./../koalixcrm_data}}/db:/db
