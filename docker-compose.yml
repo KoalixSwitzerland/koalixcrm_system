@@ -118,18 +118,9 @@ services:
 
   # --- Django backend server ---
   backend:
-    image: ghcr.io/koalixswitzerland/koalixcrm-dev-container:main
-    command: >
-      sh -c "
-        pip install --no-cache-dir -r requirements/celery_requirements.txt &&
-        python manage.py migrate --noinput &&
-        python manage.py collectstatic --noinput &&
-        if [ \"$${DJANGO_AUTORELOAD:-0}\" = '1' ]; then
-          exec python manage.py runserver 0.0.0.0:8000
-        else
-          exec python manage.py runserver --noreload 0.0.0.0:8000
-        fi
-      "
+    build:
+      context: ${KOALIXCRM_DIR:-./../koalixcrm}
+      dockerfile: docker/dev/Dockerfile.django
     env_file:
       - path: ${KOALIXCRM_DB_DIR:-./../koalixcrm_data}/secrets.env
         required: true
@@ -140,6 +131,8 @@ services:
       - DJANGO_SECRET_KEY=django-insecure-local-dev-key-DO-NOT-USE-IN-PRODUCTION
       - ALLOWED_HOSTS=localhost,backend,host.docker.internal,127.0.0.1
       - PYTHONUNBUFFERED=1
+      # --- i18n ---
+      - KOALIXCRM_LANGUAGE_CODE=${KOALIXCRM_LANGUAGE_CODE:-en-us}
       # --- Database (SQLite) ---
       - DB_CHOICE=sqlite3
       - SQLITE_DB_FILE=/db/db.sqlite3
@@ -156,8 +149,8 @@ services:
       - CELERY_BROKER_URL=sqs://dummy:dummy@elasticmq:9324
       - POLL_SLEEP_SECONDS=2
       - ENABLE_SQS_POLLER=true
-      # --- Auth (no local Keycloak — use Django ModelBackend) ---
-      - KOALIXCRM_REST_API_AUTH=False
+      # --- Auth (cloud Keycloak for admin login, secrets from secrets.env) ---
+      - SITE_URL=http://localhost:${DJANGO_PORT:-8000}
       # --- E2E test-only routes ---
       - E2E_TESTING=true
       - E2E_SECRET=local-e2e-secret
@@ -186,7 +179,7 @@ services:
   celery:
     build:
       context: ${KOALIXCRM_DIR:-./../koalixcrm}
-      dockerfile: Dockerfile-Celery
+      dockerfile: docker/dev/Dockerfile.celery
     env_file:
       - path: ${KOALIXCRM_DB_DIR:-./../koalixcrm_data}/secrets.env
         required: true
@@ -195,6 +188,8 @@ services:
       - DJANGO_SETTINGS_MODULE=projectsettings.settings.development_docker_settings
       - DJANGO_SECRET_KEY=django-insecure-local-dev-key-DO-NOT-USE-IN-PRODUCTION
       - PYTHONUNBUFFERED=1
+      # --- i18n ---
+      - KOALIXCRM_LANGUAGE_CODE=${KOALIXCRM_LANGUAGE_CODE:-en-us}
       # --- Database (SQLite) ---
       - DB_CHOICE=sqlite3
       - SQLITE_DB_FILE=/db/db.sqlite3
@@ -224,53 +219,17 @@ services:
       - koalixcrm-net
     profiles: [integration, e2e, dev]
 
-  # --- Nginx reverse proxy (e2e — serves Django + allure reports) ---
-  nginx:
+  # --- Allure report server (serves HTML reports for e2e results) ---
+  allure-nginx:
     image: nginx:1.27-alpine
     volumes:
       - ${KOALIXCRM_SYSTEM_HOST_DIR:-${KOALIXCRM_SYSTEM_DIR:-.}}/docker/nginx-e2e.conf:/etc/nginx/nginx.conf:ro
       - allure_report:/usr/share/nginx/allure-report:ro
     ports:
-      - "${NGINX_PORT:-5000}:80"
       - "${ALLURE_PORT:-5001}:8080"
-    depends_on:
-      - backend
     networks:
-      koalixcrm-net:
-        aliases:
-          - frontend
+      - koalixcrm-net
     profiles: [e2e]
-
-  # --- Nginx reverse proxy (integration — no browser needed) ---
-  nginx-integration:
-    image: nginx:1.27-alpine
-    volumes:
-      - ${KOALIXCRM_SYSTEM_HOST_DIR:-${KOALIXCRM_SYSTEM_DIR:-.}}/docker/nginx-e2e.conf:/etc/nginx/nginx.conf:ro
-    ports:
-      - "${NGINX_PORT:-5000}:80"
-    depends_on:
-      - backend
-    networks:
-      koalixcrm-net:
-        aliases:
-          - frontend
-    profiles: [integration]
-
-  # --- Nginx reverse proxy (dev — auto-reload support) ---
-  nginx-dev:
-    image: nginx:1.27-alpine
-    volumes:
-      - ${KOALIXCRM_SYSTEM_HOST_DIR:-${KOALIXCRM_SYSTEM_DIR:-.}}/docker/nginx-dev.conf:/etc/nginx/nginx.conf:ro
-    ports:
-      - "${NGINX_PORT:-5000}:80"
-    depends_on:
-      - backend
-    networks:
-      koalixcrm-net:
-        aliases:
-          - frontend
-    restart: unless-stopped
-    profiles: [dev]
 
 
 # --- Test runners -------------------------------------------------------------
@@ -279,15 +238,10 @@ services:
   # Default CMD runs full suite. Override by appending command after service name:
   #   docker compose --profile unit-django run --rm unit-django-runner pytest tests/accounting -v
   unit-django-runner:
-    image: ghcr.io/koalixswitzerland/koalixcrm-dev-container:main
-    command: >
-      sh -c "
-        pip install --no-cache-dir -r requirements/celery_requirements.txt &&
-        pytest
-        -m 'not front_end_tests'
-        -v --tb=short --disable-warnings
-        --cov=koalixcrm --cov-report=xml:test_report/coverage.xml
-      "
+    build:
+      context: ${KOALIXCRM_DIR:-./../koalixcrm}
+      dockerfile: docker/dev/Dockerfile.django
+    command: ["pytest", "-m", "not front_end_tests", "-v", "--tb=short", "--disable-warnings", "--continue-on-collection-errors", "--cov=koalixcrm", "--cov-report=xml:test_report/coverage.xml"]
     working_dir: /usr/src/app
     environment:
       - DJANGO_SETTINGS_MODULE=projectsettings.settings.development_docker_sqlite_settings
@@ -297,7 +251,7 @@ services:
       - SQLITE_DB_FILE=/tmp/unit-test.sqlite3
       - ALLOWED_HOSTS=localhost
       - PYTHONUNBUFFERED=1
-      - KOALIXCRM_REST_API_AUTH=False
+
       - AWS_REGION=us-east-1
       - S3_PDF_BUCKET=test-bucket
       - S3_ENDPOINT_URL=http://localhost:9000
@@ -308,33 +262,30 @@ services:
       - ${KOALIXCRM_HOST_DIR:-${KOALIXCRM_DIR:-./../koalixcrm}}:/usr/src/app
     profiles: [unit-django]
 
-  # --- Celery unit test runner (mocked interfaces, no infrastructure) ---
+  # --- Celery unit test runner (standalone microservice, no Django) ---
+  # Tests only koalixcrm_microservices/ — the Celery worker has NO Django
+  # dependency; all Django objects are retrieved via REST API.
   # Default CMD runs full suite. Override by appending command after service name.
   unit-celery-runner:
     build:
       context: ${KOALIXCRM_DIR:-./../koalixcrm}
-      dockerfile: Dockerfile-Celery
-    command: >
-      pytest
-      -m "not front_end_tests"
-      -v --tb=short --disable-warnings
-      --cov=koalixcrm_microservices --cov-report=xml:test_report/coverage-celery.xml
+      dockerfile: docker/dev/Dockerfile.celery
+    command: ["pytest", "koalixcrm_microservices/", "-v", "--tb=short", "--disable-warnings", "--override-ini=DJANGO_SETTINGS_MODULE=", "-p", "no:django", "--cov=koalixcrm_microservices", "--cov-report=xml:test_report/coverage-celery.xml"]
     working_dir: /usr/src/app
     environment:
-      - DJANGO_SETTINGS_MODULE=projectsettings.settings.development_docker_sqlite_settings
-      - DJANGO_DEBUG=True
-      - DJANGO_SECRET_KEY=django-insecure-unit-test-key
-      - DB_CHOICE=sqlite3
-      - SQLITE_DB_FILE=/tmp/unit-test.sqlite3
-      - ALLOWED_HOSTS=localhost
       - PYTHONUNBUFFERED=1
-      - KOALIXCRM_REST_API_AUTH=False
+      # --- Local S3/SQS for mocking ---
       - AWS_REGION=us-east-1
       - S3_PDF_BUCKET=test-bucket
       - S3_ENDPOINT_URL=http://localhost:9000
       - SQS_ENDPOINT_URL=http://localhost:9324
       - KOALIXCRM_MICROSERVICE_SQS=koalixcrm-microservice-sqs
       - CELERY_SQS=koalixcrm-celery-sqs
+      # --- M2M API client config (mocked in unit tests) ---
+      - CELERY_WORKER_M2M_OIDC_ISSUER=
+      - CELERY_WORKER_M2M_CLIENT_ID=
+      - CELERY_WORKER_M2M_CLIENT_SECRET=
+      - KOALIXCRM_API_URL=http://localhost:8000
     volumes:
       - ${KOALIXCRM_HOST_DIR:-${KOALIXCRM_DIR:-./../koalixcrm}}:/usr/src/app
     profiles: [unit-celery]
@@ -342,15 +293,10 @@ services:
   # --- Integration test runner ---
   # Default CMD runs full suite. Override by appending command after service name.
   integration-runner:
-    image: ghcr.io/koalixswitzerland/koalixcrm-dev-container:main
-    command: >
-      sh -c "
-        pip install --no-cache-dir -r requirements/celery_requirements.txt &&
-        pytest
-        -m 'not front_end_tests'
-        -v --tb=short --disable-warnings
-        --cov=koalixcrm --cov-report=xml:test_report/coverage.xml
-      "
+    build:
+      context: ${KOALIXCRM_DIR:-./../koalixcrm}
+      dockerfile: docker/dev/Dockerfile.django
+    command: ["pytest", "-m", "not front_end_tests", "-v", "--tb=short", "--disable-warnings", "--continue-on-collection-errors", "--cov=koalixcrm", "--cov-report=xml:test_report/coverage.xml"]
     env_file:
       - path: ${KOALIXCRM_DB_DIR:-./../koalixcrm_data}/secrets.env
         required: true
@@ -376,7 +322,7 @@ services:
       - CELERY_SQS=koalixcrm-celery-sqs
       - CELERY_BROKER_URL=sqs://dummy:dummy@elasticmq:9324
       # --- Auth disabled locally ---
-      - KOALIXCRM_REST_API_AUTH=False
+
     volumes:
       - ${KOALIXCRM_HOST_DIR:-${KOALIXCRM_DIR:-./../koalixcrm}}:/usr/src/app
       - ${KOALIXCRM_DB_HOST_DIR:-${KOALIXCRM_DB_DIR:-./../koalixcrm_data}}/db:/db
@@ -394,10 +340,11 @@ services:
   # Default CMD runs full suite. Override by appending command after service name:
   #   docker compose --profile e2e run --rm e2e-runner pytest tests/e2e/test_create_sales_document_from_quote.py -v
   e2e-runner:
-    image: ghcr.io/koalixswitzerland/koalixcrm-dev-container:main
+    build:
+      context: ${KOALIXCRM_DIR:-./../koalixcrm}
+      dockerfile: docker/dev/Dockerfile.django
     command: >
       sh -c "
-        pip install --no-cache-dir -r requirements/celery_requirements.txt &&
         pip install --no-cache-dir allure-pytest selenium &&
         echo 'Waiting for backend...' &&
         for i in $$(seq 1 30); do
@@ -435,10 +382,10 @@ services:
       - CELERY_SQS=koalixcrm-celery-sqs
       - CELERY_BROKER_URL=sqs://dummy:dummy@elasticmq:9324
       # --- Auth disabled locally ---
-      - KOALIXCRM_REST_API_AUTH=False
+
       # --- E2E specific ---
       - E2E_BACKEND_URL=http://backend:8000
-      - E2E_FRONTEND_URL=http://localhost:5000
+      - E2E_FRONTEND_URL=http://backend:8000
       - E2E_TESTING=true
       - E2E_SECRET=local-e2e-secret
       # --- Selenium (Firefox headless inside container) ---
@@ -449,11 +396,10 @@ services:
       - allure_results:/allure-results
       - allure_report:/allure-report
     working_dir: /usr/src/app
-    # Share nginx's network namespace so Selenium can reach localhost:5000
-    network_mode: "service:nginx"
     depends_on:
       - backend
-      - nginx
+    networks:
+      - koalixcrm-net
     profiles: [e2e]
 
   # --- Allure report generator (runs after e2e tests, generates HTML) ---
