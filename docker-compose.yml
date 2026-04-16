@@ -241,7 +241,10 @@ services:
     build:
       context: ${KOALIXCRM_DIR:-./../koalixcrm}
       dockerfile: docker/dev/Dockerfile.django
-    command: ["pytest", "-m", "not front_end_tests", "-v", "--tb=short", "--disable-warnings", "--continue-on-collection-errors", "--cov=koalixcrm", "--cov-report=xml:test_report/coverage.xml"]
+    # Django unit suite: excludes front-end (Selenium) and integration
+    # (which needs live MinIO/ElasticMQ/backend/celery). Also ignores the
+    # Celery-only microservice tests so the three test types do not overlap.
+    command: ["pytest", "-m", "not front_end_tests and not integration", "--ignore=koalixcrm_microservices", "-v", "--tb=short", "--disable-warnings", "--continue-on-collection-errors", "--cov=koalixcrm", "--cov-report=xml:test_report/coverage.xml"]
     working_dir: /usr/src/app
     environment:
       - DJANGO_SETTINGS_MODULE=projectsettings.settings.development_docker_sqlite_settings
@@ -270,7 +273,10 @@ services:
     build:
       context: ${KOALIXCRM_DIR:-./../koalixcrm}
       dockerfile: docker/dev/Dockerfile.celery
-    command: ["pytest", "koalixcrm_microservices/", "-v", "--tb=short", "--disable-warnings", "--override-ini=DJANGO_SETTINGS_MODULE=", "-p", "no:django", "--cov=koalixcrm_microservices", "--cov-report=xml:test_report/coverage-celery.xml"]
+    # Celery unit suite: scans ONLY koalixcrm_microservices/ with Django
+    # disabled — these tests have no Django dependency, matching the
+    # Celery worker runtime which talks to the backend via REST.
+    command: ["pytest", "koalixcrm_microservices/", "-v", "--tb=short", "--disable-warnings", "--override-ini=DJANGO_SETTINGS_MODULE=", "-p", "no:django", "--cov=koalixcrm_microservices", "--cov=koalixcrm_mq_commands", "--cov-report=xml:test_report/coverage-celery.xml"]
     working_dir: /usr/src/app
     environment:
       - PYTHONUNBUFFERED=1
@@ -296,7 +302,9 @@ services:
     build:
       context: ${KOALIXCRM_DIR:-./../koalixcrm}
       dockerfile: docker/dev/Dockerfile.django
-    command: ["pytest", "-m", "not front_end_tests", "-v", "--tb=short", "--disable-warnings", "--continue-on-collection-errors", "--cov=koalixcrm", "--cov-report=xml:test_report/coverage.xml"]
+    # Integration suite: tests marked with @pytest.mark.integration that need
+    # live MinIO, ElasticMQ and the backend+celery services running.
+    command: ["pytest", "tests/integration/", "-m", "integration", "-v", "--tb=short", "--disable-warnings", "--cov=koalixcrm", "--cov-report=xml:test_report/coverage.xml"]
     env_file:
       - path: ${KOALIXCRM_DB_DIR:-./../koalixcrm_data}/secrets.env
         required: true
