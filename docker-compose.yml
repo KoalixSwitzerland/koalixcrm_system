@@ -13,9 +13,11 @@
 # Profiles:
 #   unit-django     — Django backend unit tests (SQLite, mocked externals)
 #   unit-celery     — Celery microservice unit tests (mocked externals)
-#   integration     — Backend + Celery + infra (SQLite, MinIO, ElasticMQ)
+#   integration     — Backend + pdf-service (Java) + infra (SQLite, MinIO, ElasticMQ)
 #   e2e             — Full stack + Selenium + allure report
 #   dev             — Long-running dev environment with auto-reload
+#   legacy-celery   — Bring up the deprecated Python Celery worker (kept during
+#                     migration for rollback; will be removed in koalixcrm#386 stage 5)
 #
 # Environment variables (set in .env.<yourname>):
 #   KOALIXCRM_DIR     — Absolute path to koalixcrm repo      (shell-readable)
@@ -83,7 +85,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
-    profiles: [integration, e2e, dev]
+    profiles: [integration, e2e, dev, legacy-celery]
 
   # --- MinIO bucket setup (runs once, creates buckets, exits) ---
   minio-setup:
@@ -99,7 +101,7 @@ services:
       "
     networks:
       - koalixcrm-net
-    profiles: [integration, e2e, dev]
+    profiles: [integration, e2e, dev, legacy-celery]
 
   # --- ElasticMQ (SQS-compatible message broker) ---
   elasticmq:
@@ -111,7 +113,7 @@ services:
       - ${KOALIXCRM_SYSTEM_HOST_DIR:-${KOALIXCRM_SYSTEM_DIR:-.}}/docker/elasticmq.conf:/opt/elasticmq.conf:ro
     networks:
       - koalixcrm-net
-    profiles: [integration, e2e, dev]
+    profiles: [integration, e2e, dev, legacy-celery]
 
 
 # --- Application services ----------------------------------------------------
@@ -173,9 +175,56 @@ services:
       koalixcrm-net:
         aliases:
           - backend
+    profiles: [integration, e2e, dev, legacy-celery]
+
+  # --- PDF export service (Java / Spring Boot) ---
+  # Replaces the Python Celery worker for the PDF-export path.
+  # Built from the koalixcrm repo's docker/dev/Dockerfile.pdf-service (Gradle
+  # build -> Temurin 21 JRE). No source bind-mount: the fat jar is baked in.
+  pdf-service:
+    build:
+      context: ${KOALIXCRM_DIR:-./../koalixcrm}
+      dockerfile: docker/dev/Dockerfile.pdf-service
+    env_file:
+      - path: ${KOALIXCRM_DB_DIR:-./../koalixcrm_data}/secrets.env
+        required: true
+    environment:
+      # --- AWS region / credentials (dummy for local MinIO+ElasticMQ) ---
+      - AWS_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=minioadmin
+      - AWS_SECRET_ACCESS_KEY=minioadmin123
+      # --- Local S3 (MinIO) ---
+      - S3_ENDPOINT_URL=http://minio:9000
+      - S3_PDF_BUCKET=koalixcrm-pdf-exports
+      - S3_PATH_STYLE_ACCESS=true
+      # --- Local SQS (ElasticMQ) ---
+      - SQS_ENDPOINT_URL=http://elasticmq:9324
+      - KOALIXCRM_MICROSERVICE_SQS=koalixcrm-microservice-sqs
+      # --- koalixCRM REST API (Java worker talks only to this) ---
+      - KOALIXCRM_API_URL=http://backend:8000
+      # --- OIDC M2M (secrets come from secrets.env; see ADR on Keycloak) ---
+      - CELERY_WORKER_M2M_OIDC_ISSUER=${CELERY_WORKER_M2M_OIDC_ISSUER:-}
+      - CELERY_WORKER_M2M_CLIENT_ID=${CELERY_WORKER_M2M_CLIENT_ID:-}
+      - CELERY_WORKER_M2M_CLIENT_SECRET=${CELERY_WORKER_M2M_CLIENT_SECRET:-}
+      - CELERY_WORKER_M2M_SCOPE=${CELERY_WORKER_M2M_SCOPE:-}
+      - X_CUSTOM_ORIGIN_VERIFICATION_ON=${X_CUSTOM_ORIGIN_VERIFICATION_ON:-false}
+      - X_CUSTOM_ORIGIN_VERIFICATION_KEY=${X_CUSTOM_ORIGIN_VERIFICATION_KEY:-}
+      - LOG_LEVEL=${PDF_SERVICE_LOG_LEVEL:-INFO}
+    depends_on:
+      minio-setup:
+        condition: service_completed_successfully
+      elasticmq:
+        condition: service_started
+      backend:
+        condition: service_started
+    networks:
+      - koalixcrm-net
     profiles: [integration, e2e, dev]
 
-  # --- Celery worker ---
+  # --- Legacy Python Celery worker (kept for unit-celery tests only) ---
+  # Removed from the integration/e2e/dev profiles in favour of `pdf-service`.
+  # Scheduled for deletion in stage 5 of the Java migration
+  # (KoalixSwitzerland/koalixcrm#386).
   celery:
     build:
       context: ${KOALIXCRM_DIR:-./../koalixcrm}
@@ -184,22 +233,17 @@ services:
       - path: ${KOALIXCRM_DB_DIR:-./../koalixcrm_data}/secrets.env
         required: true
     environment:
-      # --- Django Core (Celery loads Django settings) ---
       - DJANGO_SETTINGS_MODULE=projectsettings.settings.development_docker_settings
       - DJANGO_SECRET_KEY=django-insecure-local-dev-key-DO-NOT-USE-IN-PRODUCTION
       - PYTHONUNBUFFERED=1
-      # --- i18n ---
       - KOALIXCRM_LANGUAGE_CODE=${KOALIXCRM_LANGUAGE_CODE:-en-us}
-      # --- Database (SQLite) ---
       - DB_CHOICE=sqlite3
       - SQLITE_DB_FILE=/db/db.sqlite3
-      # --- Local S3 (MinIO) ---
       - S3_ENDPOINT_URL=http://minio:9000
       - AWS_ACCESS_KEY_ID=minioadmin
       - AWS_SECRET_ACCESS_KEY=minioadmin123
       - AWS_REGION=us-east-1
       - S3_PDF_BUCKET=koalixcrm-pdf-exports
-      # --- Local SQS (ElasticMQ) ---
       - SQS_ENDPOINT_URL=http://elasticmq:9324
       - KOALIXCRM_MICROSERVICE_SQS=koalixcrm-microservice-sqs
       - CELERY_SQS=koalixcrm-celery-sqs
@@ -217,7 +261,7 @@ services:
         condition: service_started
     networks:
       - koalixcrm-net
-    profiles: [integration, e2e, dev]
+    profiles: [legacy-celery]
 
   # --- Allure report server (serves HTML reports for e2e results) ---
   allure-nginx:
