@@ -180,7 +180,69 @@ services:
       koalixcrm-net:
         aliases:
           - backend
-    profiles: [integration, e2e, dev, legacy-celery]
+    profiles: [e2e, dev, legacy-celery]
+
+  # --- Django backend server (integration profile) ---
+  # Runs only under the `integration` profile and uses a dedicated SQLite file
+  # (/db/integration.sqlite3) so tests never depend on the state of the shared
+  # dev DB. Keeps the `backend` network alias so tests / other containers can
+  # resolve it by the same hostname. On first boot the entrypoint runs
+  # sync_split_migrations + migrate on an empty file, producing a clean schema.
+  backend-integration:
+    build:
+      context: ${KOALIXCRM_DIR:-./../koalixcrm}
+      dockerfile: docker/dev/Dockerfile.django
+    env_file:
+      - path: ${KOALIXCRM_DB_DIR:-./../koalixcrm_data}/secrets.env
+        required: true
+    environment:
+      # --- Django Core ---
+      - DJANGO_SETTINGS_MODULE=projectsettings.settings.development_docker_settings
+      - DJANGO_DEBUG=True
+      - DJANGO_SECRET_KEY=django-insecure-local-dev-key-DO-NOT-USE-IN-PRODUCTION
+      - ALLOWED_HOSTS=localhost,backend,host.docker.internal,127.0.0.1
+      - PYTHONUNBUFFERED=1
+      # --- i18n ---
+      - KOALIXCRM_LANGUAGE_CODE=${KOALIXCRM_LANGUAGE_CODE:-en-us}
+      # --- Database (SQLite) — dedicated integration file ---
+      - DB_CHOICE=sqlite3
+      - SQLITE_DB_FILE=/db/integration.sqlite3
+      # --- Local S3 (MinIO) ---
+      - S3_ENDPOINT_URL=http://minio:9000
+      - AWS_ACCESS_KEY_ID=minioadmin
+      - AWS_SECRET_ACCESS_KEY=minioadmin123
+      - AWS_REGION=us-east-1
+      - S3_PDF_BUCKET=koalixcrm-pdf-exports
+      # --- Local SQS (ElasticMQ) ---
+      - SQS_ENDPOINT_URL=http://elasticmq:9324
+      - KOALIXCRM_MICROSERVICE_SQS=koalixcrm-microservice-sqs
+      - CELERY_SQS=koalixcrm-celery-sqs
+      - CELERY_BROKER_URL=sqs://dummy:dummy@elasticmq:9324
+      - POLL_SLEEP_SECONDS=2
+      - ENABLE_SQS_POLLER=true
+      # --- Auth ---
+      - SITE_URL=http://localhost:${DJANGO_PORT:-8000}
+      # --- E2E test-only routes (also enabled here for integration test reuse) ---
+      - E2E_TESTING=true
+      - E2E_SECRET=local-e2e-secret
+    expose:
+      - "8000"
+    volumes:
+      - ${KOALIXCRM_HOST_DIR:-${KOALIXCRM_DIR:-./../koalixcrm}}:/usr/src/app
+      - ${KOALIXCRM_DB_HOST_DIR:-${KOALIXCRM_DB_DIR:-./../koalixcrm_data}}/db:/db
+    working_dir: /usr/src/app
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      minio-setup:
+        condition: service_completed_successfully
+      elasticmq:
+        condition: service_started
+    networks:
+      koalixcrm-net:
+        aliases:
+          - backend
+    profiles: [integration]
 
   # --- PDF export service (Java / Spring Boot) ---
   # Replaces the Python Celery worker for the PDF-export path.
@@ -220,8 +282,11 @@ services:
         condition: service_completed_successfully
       elasticmq:
         condition: service_started
-      backend:
-        condition: service_started
+      # No depends_on backend: the `backend` alias is attached to either
+      # backend (e2e/dev) or backend-integration (integration), depending on
+      # profile. Listing one here would force it to start across every
+      # profile. pdf-service only talks to backend lazily (on SQS messages),
+      # so startup ordering isn't required; the Java HTTP client retries.
     networks:
       - koalixcrm-net
     profiles: [integration, e2e, dev]
@@ -364,9 +429,9 @@ services:
       - DJANGO_SECRET_KEY=django-insecure-local-dev-key-DO-NOT-USE-IN-PRODUCTION
       - ALLOWED_HOSTS=localhost,backend,host.docker.internal,127.0.0.1
       - PYTHONUNBUFFERED=1
-      # --- Database (SQLite) ---
+      # --- Database (SQLite) — dedicated integration file, matches backend-integration ---
       - DB_CHOICE=sqlite3
-      - SQLITE_DB_FILE=/db/db.sqlite3
+      - SQLITE_DB_FILE=/db/integration.sqlite3
       # --- Local S3 (MinIO) ---
       - S3_ENDPOINT_URL=http://minio:9000
       - AWS_ACCESS_KEY_ID=minioadmin
@@ -387,7 +452,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
-      - backend
+      - backend-integration
       - pdf-service
     networks:
       - koalixcrm-net
