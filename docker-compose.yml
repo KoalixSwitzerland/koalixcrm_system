@@ -11,11 +11,16 @@
 #           in safety-critical auth code makes local Keycloak unreliable)
 #
 # Profiles:
-#   unit-django     — Django backend unit tests (SQLite, mocked externals)
-#   unit-celery     — Celery microservice unit tests (mocked externals)
-#   integration     — Backend + Celery + infra (SQLite, MinIO, ElasticMQ)
-#   e2e             — Full stack + Selenium + allure report
-#   dev             — Long-running dev environment with auto-reload
+#   unit-django            — Django backend unit tests (SQLite, mocked externals)
+#   unit-celery            — Celery microservice unit tests (mocked externals)
+#   unit-pdf-service       — Java pdf-export-service unit tests (fast, no infra)
+#   integration            — Backend + pdf-service (Java) + infra (SQLite, MinIO, ElasticMQ)
+#   integration-pdf-service — Java pdf-export-service integration tests (Testcontainers:
+#                             LocalStack + WireMock spawned via the host Docker socket)
+#   e2e                    — Full stack + Selenium + allure report
+#   dev                    — Long-running dev environment with auto-reload
+#   legacy-celery          — Bring up the deprecated Python Celery worker (kept during
+#                            migration for rollback; will be removed in koalixcrm#386 stage 5)
 #
 # Environment variables (set in .env.<yourname>):
 #   KOALIXCRM_DIR     — Absolute path to koalixcrm repo      (shell-readable)
@@ -39,14 +44,16 @@
 #   Always pass --env-file so docker compose knows which config to use.
 #
 # Usage:
-#   # Unit tests (selective: append pytest command to override CMD)
+#   # Unit tests (selective: append pytest/gradle command to override CMD)
 #   docker compose --env-file .env.aaron --profile unit-django run --rm unit-django-runner
 #   docker compose --env-file .env.aaron --profile unit-django run --rm unit-django-runner pytest tests/accounting -v
 #   docker compose --env-file .env.aaron --profile unit-celery run --rm unit-celery-runner
+#   docker compose --env-file .env.aaron --profile unit-pdf-service run --rm unit-pdf-service-runner
 #
 #   # Integration tests
 #   docker compose --env-file .env.aaron --profile integration run --rm integration-runner
 #   docker compose --env-file .env.aaron --profile integration run --rm integration-runner pytest tests/crm_api_py -v
+#   docker compose --env-file .env.aaron --profile integration-pdf-service run --rm integration-pdf-service-runner
 #
 #   # E2E tests
 #   docker compose --env-file .env.aaron --profile e2e run --rm e2e-runner
@@ -83,7 +90,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
-    profiles: [integration, e2e, dev]
+    profiles: [integration, e2e, dev, legacy-celery]
 
   # --- MinIO bucket setup (runs once, creates buckets, exits) ---
   minio-setup:
@@ -99,7 +106,7 @@ services:
       "
     networks:
       - koalixcrm-net
-    profiles: [integration, e2e, dev]
+    profiles: [integration, e2e, dev, legacy-celery]
 
   # --- ElasticMQ (SQS-compatible message broker) ---
   elasticmq:
@@ -111,7 +118,7 @@ services:
       - ${KOALIXCRM_SYSTEM_HOST_DIR:-${KOALIXCRM_SYSTEM_DIR:-.}}/docker/elasticmq.conf:/opt/elasticmq.conf:ro
     networks:
       - koalixcrm-net
-    profiles: [integration, e2e, dev]
+    profiles: [integration, e2e, dev, legacy-celery]
 
 
 # --- Application services ----------------------------------------------------
@@ -173,9 +180,121 @@ services:
       koalixcrm-net:
         aliases:
           - backend
+    profiles: [e2e, dev, legacy-celery]
+
+  # --- Django backend server (integration profile) ---
+  # Runs only under the `integration` profile and uses a dedicated SQLite file
+  # (/db/integration.sqlite3) so tests never depend on the state of the shared
+  # dev DB. Keeps the `backend` network alias so tests / other containers can
+  # resolve it by the same hostname. On first boot the entrypoint runs
+  # sync_split_migrations + migrate on an empty file, producing a clean schema.
+  backend-integration:
+    build:
+      context: ${KOALIXCRM_DIR:-./../koalixcrm}
+      dockerfile: docker/dev/Dockerfile.django
+    env_file:
+      - path: ${KOALIXCRM_DB_DIR:-./../koalixcrm_data}/secrets.env
+        required: true
+    environment:
+      # --- Django Core ---
+      - DJANGO_SETTINGS_MODULE=projectsettings.settings.development_docker_settings
+      - DJANGO_DEBUG=True
+      - DJANGO_SECRET_KEY=django-insecure-local-dev-key-DO-NOT-USE-IN-PRODUCTION
+      - ALLOWED_HOSTS=localhost,backend,host.docker.internal,127.0.0.1
+      - PYTHONUNBUFFERED=1
+      # --- i18n ---
+      - KOALIXCRM_LANGUAGE_CODE=${KOALIXCRM_LANGUAGE_CODE:-en-us}
+      # --- Database (SQLite) — dedicated integration file ---
+      - DB_CHOICE=sqlite3
+      - SQLITE_DB_FILE=/db/integration.sqlite3
+      # --- Local S3 (MinIO) ---
+      - S3_ENDPOINT_URL=http://minio:9000
+      - AWS_ACCESS_KEY_ID=minioadmin
+      - AWS_SECRET_ACCESS_KEY=minioadmin123
+      - AWS_REGION=us-east-1
+      - S3_PDF_BUCKET=koalixcrm-pdf-exports
+      # --- Local SQS (ElasticMQ) ---
+      - SQS_ENDPOINT_URL=http://elasticmq:9324
+      - KOALIXCRM_MICROSERVICE_SQS=koalixcrm-microservice-sqs
+      - CELERY_SQS=koalixcrm-celery-sqs
+      - CELERY_BROKER_URL=sqs://dummy:dummy@elasticmq:9324
+      - POLL_SLEEP_SECONDS=2
+      - ENABLE_SQS_POLLER=true
+      # --- Auth ---
+      - SITE_URL=http://localhost:${DJANGO_PORT:-8000}
+      # --- E2E test-only routes (also enabled here for integration test reuse) ---
+      - E2E_TESTING=true
+      - E2E_SECRET=local-e2e-secret
+    expose:
+      - "8000"
+    volumes:
+      - ${KOALIXCRM_HOST_DIR:-${KOALIXCRM_DIR:-./../koalixcrm}}:/usr/src/app
+      - ${KOALIXCRM_DB_HOST_DIR:-${KOALIXCRM_DB_DIR:-./../koalixcrm_data}}/db:/db
+    working_dir: /usr/src/app
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      minio-setup:
+        condition: service_completed_successfully
+      elasticmq:
+        condition: service_started
+    networks:
+      koalixcrm-net:
+        aliases:
+          - backend
+    profiles: [integration]
+
+  # --- PDF export service (Java / Spring Boot) ---
+  # Replaces the Python Celery worker for the PDF-export path.
+  # Built from the koalixcrm repo's docker/dev/Dockerfile.pdf-service (Gradle
+  # build -> Temurin 21 JRE). No source bind-mount: the fat jar is baked in.
+  pdf-service:
+    build:
+      context: ${KOALIXCRM_DIR:-./../koalixcrm}
+      dockerfile: docker/dev/Dockerfile.pdf-service
+    env_file:
+      - path: ${KOALIXCRM_DB_DIR:-./../koalixcrm_data}/secrets.env
+        required: true
+    environment:
+      # --- AWS region / credentials (dummy for local MinIO+ElasticMQ) ---
+      - AWS_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=minioadmin
+      - AWS_SECRET_ACCESS_KEY=minioadmin123
+      # --- Local S3 (MinIO) ---
+      - S3_ENDPOINT_URL=http://minio:9000
+      - S3_PDF_BUCKET=koalixcrm-pdf-exports
+      - S3_PATH_STYLE_ACCESS=true
+      # --- Local SQS (ElasticMQ) ---
+      - SQS_ENDPOINT_URL=http://elasticmq:9324
+      - KOALIXCRM_MICROSERVICE_SQS=koalixcrm-microservice-sqs
+      # --- koalixCRM REST API (Java worker talks only to this) ---
+      - KOALIXCRM_API_URL=http://backend:8000
+      # --- OIDC M2M (secrets come from secrets.env; see ADR on Keycloak) ---
+      - CELERY_WORKER_M2M_OIDC_ISSUER=${CELERY_WORKER_M2M_OIDC_ISSUER:-}
+      - CELERY_WORKER_M2M_CLIENT_ID=${CELERY_WORKER_M2M_CLIENT_ID:-}
+      - CELERY_WORKER_M2M_CLIENT_SECRET=${CELERY_WORKER_M2M_CLIENT_SECRET:-}
+      - CELERY_WORKER_M2M_SCOPE=${CELERY_WORKER_M2M_SCOPE:-}
+      - X_CUSTOM_ORIGIN_VERIFICATION_ON=${X_CUSTOM_ORIGIN_VERIFICATION_ON:-false}
+      - X_CUSTOM_ORIGIN_VERIFICATION_KEY=${X_CUSTOM_ORIGIN_VERIFICATION_KEY:-}
+      - LOG_LEVEL=${PDF_SERVICE_LOG_LEVEL:-INFO}
+    depends_on:
+      minio-setup:
+        condition: service_completed_successfully
+      elasticmq:
+        condition: service_started
+      # No depends_on backend: the `backend` alias is attached to either
+      # backend (e2e/dev) or backend-integration (integration), depending on
+      # profile. Listing one here would force it to start across every
+      # profile. pdf-service only talks to backend lazily (on SQS messages),
+      # so startup ordering isn't required; the Java HTTP client retries.
+    networks:
+      - koalixcrm-net
     profiles: [integration, e2e, dev]
 
-  # --- Celery worker ---
+  # --- Legacy Python Celery worker (kept for unit-celery tests only) ---
+  # Removed from the integration/e2e/dev profiles in favour of `pdf-service`.
+  # Scheduled for deletion in stage 5 of the Java migration
+  # (KoalixSwitzerland/koalixcrm#386).
   celery:
     build:
       context: ${KOALIXCRM_DIR:-./../koalixcrm}
@@ -184,22 +303,17 @@ services:
       - path: ${KOALIXCRM_DB_DIR:-./../koalixcrm_data}/secrets.env
         required: true
     environment:
-      # --- Django Core (Celery loads Django settings) ---
       - DJANGO_SETTINGS_MODULE=projectsettings.settings.development_docker_settings
       - DJANGO_SECRET_KEY=django-insecure-local-dev-key-DO-NOT-USE-IN-PRODUCTION
       - PYTHONUNBUFFERED=1
-      # --- i18n ---
       - KOALIXCRM_LANGUAGE_CODE=${KOALIXCRM_LANGUAGE_CODE:-en-us}
-      # --- Database (SQLite) ---
       - DB_CHOICE=sqlite3
       - SQLITE_DB_FILE=/db/db.sqlite3
-      # --- Local S3 (MinIO) ---
       - S3_ENDPOINT_URL=http://minio:9000
       - AWS_ACCESS_KEY_ID=minioadmin
       - AWS_SECRET_ACCESS_KEY=minioadmin123
       - AWS_REGION=us-east-1
       - S3_PDF_BUCKET=koalixcrm-pdf-exports
-      # --- Local SQS (ElasticMQ) ---
       - SQS_ENDPOINT_URL=http://elasticmq:9324
       - KOALIXCRM_MICROSERVICE_SQS=koalixcrm-microservice-sqs
       - CELERY_SQS=koalixcrm-celery-sqs
@@ -217,7 +331,7 @@ services:
         condition: service_started
     networks:
       - koalixcrm-net
-    profiles: [integration, e2e, dev]
+    profiles: [legacy-celery]
 
   # --- Allure report server (serves HTML reports for e2e results) ---
   allure-nginx:
@@ -315,9 +429,9 @@ services:
       - DJANGO_SECRET_KEY=django-insecure-local-dev-key-DO-NOT-USE-IN-PRODUCTION
       - ALLOWED_HOSTS=localhost,backend,host.docker.internal,127.0.0.1
       - PYTHONUNBUFFERED=1
-      # --- Database (SQLite) ---
+      # --- Database (SQLite) — dedicated integration file, matches backend-integration ---
       - DB_CHOICE=sqlite3
-      - SQLITE_DB_FILE=/db/db.sqlite3
+      - SQLITE_DB_FILE=/db/integration.sqlite3
       # --- Local S3 (MinIO) ---
       - S3_ENDPOINT_URL=http://minio:9000
       - AWS_ACCESS_KEY_ID=minioadmin
@@ -338,8 +452,8 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
-      - backend
-      - celery
+      - backend-integration
+      - pdf-service
     networks:
       - koalixcrm-net
     profiles: [integration]
@@ -410,6 +524,65 @@ services:
       - koalixcrm-net
     profiles: [e2e]
 
+  # --- pdf-export-service unit test runner (Java, fast, no infra) ---
+  # Runs only classes whose name ends in *Test (the JUnit convention for unit
+  # tests). Integration tests end in *IT and are excluded here.
+  # Override the CMD to run a single test class:
+  #   docker compose --profile unit-pdf-service run --rm unit-pdf-service-runner \
+  #     gradle --no-daemon :pdf-export-service:test --tests net.koalix.pdf.xml.XmlAggregatorTest
+  unit-pdf-service-runner:
+    image: gradle:8.10-jdk21-alpine
+    working_dir: /src
+    command:
+      - sh
+      - -c
+      - "gradle --no-daemon :pdf-export-service:test --tests '*Test'"
+    volumes:
+      - ${KOALIXCRM_HOST_DIR:-${KOALIXCRM_DIR:-./../koalixcrm}}:/src
+      - gradle_cache:/home/gradle/.gradle
+      - gradle_cache:/root/.gradle
+    environment:
+      - GRADLE_USER_HOME=/home/gradle/.gradle
+    profiles: [unit-pdf-service]
+
+  # --- pdf-export-service integration test runner (Java + Testcontainers) ---
+  # Runs the full :pdf-export-service:test task, which includes *IT classes
+  # (TemplateFetcherIT, FopRendererIT). Those tests spawn sibling containers
+  # (LocalStack, WireMock) via the host Docker socket — hence the /var/run/docker.sock
+  # bind-mount and TESTCONTAINERS_HOST_OVERRIDE=host.docker.internal so
+  # Testcontainers rewrites the endpoint URLs to be reachable from inside the
+  # runner container.
+  #
+  # Prerequisite: host Docker daemon must be reachable at /var/run/docker.sock
+  # (Docker Desktop on macOS/Windows: enabled by default. WSL2: see
+  # https://docs.docker.com/desktop/wsl/).
+  integration-pdf-service-runner:
+    image: gradle:8.10-jdk21-alpine
+    working_dir: /src
+    command:
+      - sh
+      - -c
+      - "gradle --no-daemon :pdf-export-service:test"
+    volumes:
+      - ${KOALIXCRM_HOST_DIR:-${KOALIXCRM_DIR:-./../koalixcrm}}:/src
+      - gradle_cache:/home/gradle/.gradle
+      - gradle_cache:/root/.gradle
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - GRADLE_USER_HOME=/home/gradle/.gradle
+      # Testcontainers: containers are started via the host daemon, so the
+      # dynamic ports they publish are bound on the host, not on this runner.
+      # Route endpoint URLs through host.docker.internal (exposed via
+      # extra_hosts → host-gateway).
+      - TESTCONTAINERS_HOST_OVERRIDE=host.docker.internal
+      - TESTCONTAINERS_CHECKS_DISABLE=true
+      - TESTCONTAINERS_RYUK_DISABLED=false
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - koalixcrm-net
+    profiles: [integration-pdf-service]
+
   # --- Allure report generator (runs after e2e tests, generates HTML) ---
   allure-report-generator:
     image: frankescobar/allure-docker-service:latest
@@ -430,6 +603,7 @@ volumes:
   minio_data:
   allure_results:
   allure_report:
+  gradle_cache:
 
 networks:
   koalixcrm-net:
