@@ -269,11 +269,11 @@ services:
       - KOALIXCRM_MICROSERVICE_SQS=koalixcrm-microservice-sqs
       # --- koalixCRM REST API (Java worker talks only to this) ---
       - KOALIXCRM_API_URL=http://backend:8000
-      # --- OIDC M2M (secrets come from secrets.env; see ADR on Keycloak) ---
-      - CELERY_WORKER_M2M_OIDC_ISSUER=${CELERY_WORKER_M2M_OIDC_ISSUER:-}
-      - CELERY_WORKER_M2M_CLIENT_ID=${CELERY_WORKER_M2M_CLIENT_ID:-}
-      - CELERY_WORKER_M2M_CLIENT_SECRET=${CELERY_WORKER_M2M_CLIENT_SECRET:-}
-      - CELERY_WORKER_M2M_SCOPE=${CELERY_WORKER_M2M_SCOPE:-}
+      # --- OIDC M2M: intentionally NOT listed here. The values come from
+      # secrets.env via env_file above. Adding them here with a ${VAR:-}
+      # default would silently overwrite the secrets.env values with empty
+      # strings when the host .env file doesn't define them (compose's
+      # `environment:` wins over `env_file:`).
       - X_CUSTOM_ORIGIN_VERIFICATION_ON=${X_CUSTOM_ORIGIN_VERIFICATION_ON:-false}
       - X_CUSTOM_ORIGIN_VERIFICATION_KEY=${X_CUSTOM_ORIGIN_VERIFICATION_KEY:-}
       - LOG_LEVEL=${PDF_SERVICE_LOG_LEVEL:-INFO}
