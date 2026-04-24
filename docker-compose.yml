@@ -23,15 +23,22 @@
 #                            migration for rollback; will be removed in koalixcrm#386 stage 5)
 #
 # Environment variables (set in .env.<yourname>):
-#   KOALIXCRM_DIR     — Absolute path to koalixcrm repo      (shell-readable)
-#   KOALIXCRM_DB_DIR  — Absolute path to DB/secrets directory (shell-readable)
-#   KOALIXCRM_SYSTEM_DIR — Absolute path to this repo        (shell-readable, default: .)
+#   KOALIXCRM_DIR       — Absolute path to koalixcrm repo        (shell-readable)
+#   KOALIXCRM_DB_DIR    — Absolute path to DB/secrets directory   (shell-readable)
+#   KOALIXCRM_SYSTEM_DIR — Absolute path to this repo             (shell-readable, default: .)
+#   KOALIXCRM_FOP_DIR   — Absolute path to koalixcrm-fop-service repo
+#                         (only needed for unit-pdf-service / integration-pdf-service
+#                          profiles; default: ./../koalixcrm-fop-service)
+#   PDF_SERVICE_IMAGE_TAG — Container tag to pull for the pdf-service (e.g.
+#                           `v2.0.0`, `develop`, `sha-abc1234`). Default: `develop`.
+#                           Pin to a concrete version in production .env files.
 #
 # Optional daemon-side overrides (only set if your shell and Docker daemon
 # see different filesystem paths — e.g. WSL shell + Docker Desktop on Windows):
 #   KOALIXCRM_HOST_DIR        — defaults to KOALIXCRM_DIR
 #   KOALIXCRM_DB_HOST_DIR     — defaults to KOALIXCRM_DB_DIR
 #   KOALIXCRM_SYSTEM_HOST_DIR — defaults to KOALIXCRM_SYSTEM_DIR
+#   KOALIXCRM_FOP_HOST_DIR    — defaults to KOALIXCRM_FOP_DIR
 #
 # Secrets:
 #   All secrets (OIDC credentials if needed for cloud, API keys) are loaded
@@ -246,12 +253,12 @@ services:
 
   # --- PDF export service (Java / Spring Boot) ---
   # Replaces the Python Celery worker for the PDF-export path.
-  # Built from the koalixcrm repo's docker/dev/Dockerfile.pdf-service (Gradle
-  # build -> Temurin 21 JRE). No source bind-mount: the fat jar is baked in.
+  # Pulled as a pre-built image from GHCR. The sources and build pipeline live
+  # in KoalixSwitzerland/koalixcrm-fop-service (extracted from koalixcrm to
+  # separate Java and Python toolchains / QA). Pin a specific tag via
+  # PDF_SERVICE_IMAGE_TAG in your .env.<name> — do not rely on `latest`.
   pdf-service:
-    build:
-      context: ${KOALIXCRM_DIR:-./../koalixcrm}
-      dockerfile: docker/dev/Dockerfile.pdf-service
+    image: ghcr.io/koalixswitzerland/koalixcrm_pdf_service:${PDF_SERVICE_IMAGE_TAG:-develop}
     env_file:
       - path: ${KOALIXCRM_DB_DIR:-./../koalixcrm_data}/secrets.env
         required: true
@@ -269,11 +276,11 @@ services:
       - KOALIXCRM_MICROSERVICE_SQS=koalixcrm-microservice-sqs
       # --- koalixCRM REST API (Java worker talks only to this) ---
       - KOALIXCRM_API_URL=http://backend:8000
-      # --- OIDC M2M (secrets come from secrets.env; see ADR on Keycloak) ---
-      - CELERY_WORKER_M2M_OIDC_ISSUER=${CELERY_WORKER_M2M_OIDC_ISSUER:-}
-      - CELERY_WORKER_M2M_CLIENT_ID=${CELERY_WORKER_M2M_CLIENT_ID:-}
-      - CELERY_WORKER_M2M_CLIENT_SECRET=${CELERY_WORKER_M2M_CLIENT_SECRET:-}
-      - CELERY_WORKER_M2M_SCOPE=${CELERY_WORKER_M2M_SCOPE:-}
+      # --- OIDC M2M: intentionally NOT listed here. The values come from
+      # secrets.env via env_file above. Adding them here with a ${VAR:-}
+      # default would silently overwrite the secrets.env values with empty
+      # strings when the host .env file doesn't define them (compose's
+      # `environment:` wins over `env_file:`).
       - X_CUSTOM_ORIGIN_VERIFICATION_ON=${X_CUSTOM_ORIGIN_VERIFICATION_ON:-false}
       - X_CUSTOM_ORIGIN_VERIFICATION_KEY=${X_CUSTOM_ORIGIN_VERIFICATION_KEY:-}
       - LOG_LEVEL=${PDF_SERVICE_LOG_LEVEL:-INFO}
@@ -538,7 +545,7 @@ services:
       - -c
       - "gradle --no-daemon :pdf-export-service:test --tests '*Test'"
     volumes:
-      - ${KOALIXCRM_HOST_DIR:-${KOALIXCRM_DIR:-./../koalixcrm}}:/src
+      - ${KOALIXCRM_FOP_HOST_DIR:-${KOALIXCRM_FOP_DIR:-./../koalixcrm-fop-service}}:/src
       - gradle_cache:/home/gradle/.gradle
       - gradle_cache:/root/.gradle
     environment:
@@ -564,7 +571,7 @@ services:
       - -c
       - "gradle --no-daemon :pdf-export-service:test"
     volumes:
-      - ${KOALIXCRM_HOST_DIR:-${KOALIXCRM_DIR:-./../koalixcrm}}:/src
+      - ${KOALIXCRM_FOP_HOST_DIR:-${KOALIXCRM_FOP_DIR:-./../koalixcrm-fop-service}}:/src
       - gradle_cache:/home/gradle/.gradle
       - gradle_cache:/root/.gradle
       - /var/run/docker.sock:/var/run/docker.sock
