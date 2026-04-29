@@ -510,7 +510,12 @@ services:
       - KOALIXCRM_MICROSERVICE_SQS=koalixcrm-microservice-sqs
       - CELERY_SQS=koalixcrm-celery-sqs
       - CELERY_BROKER_URL=sqs://dummy:dummy@elasticmq:9324
-      # --- Auth disabled locally ---
+      # --- Auth disabled locally: clear ADMIN_OIDC_* so LoginSelectionView
+      # falls back to the Django admin login form (id_username/id_password)
+      # instead of redirecting to the cloud Keycloak. Overrides secrets.env.
+      - ADMIN_OIDC_ISSUER=
+      - ADMIN_OIDC_CLIENT_ID=
+      - ADMIN_OIDC_CLIENT_SECRET=
 
       # --- E2E specific ---
       - E2E_BACKEND_URL=http://backend:8000
