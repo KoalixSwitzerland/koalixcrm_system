@@ -1,0 +1,299 @@
+# Offene Fragen (Open Questions)
+
+Dieses Dokument sammelt blockierende oder klärungsbedürftige Fragen, die in publizierten
+Artefakten nicht als offene Punkte eingebettet sein dürfen. Jeder Eintrag verweist auf das
+betreffende Artefakt und den zuständigen Agenten oder Entscheider.
+
+---
+
+## OQ-0001 — eCl@ss-Lizenz: Inhalt nicht im Open-Source-Paket
+
+**Referenz:** ADR-0004 (Klassifizierung und erweiterbare Attribute), Abschnitt „Lizenzbeschränkung"
+
+**Frage:** eCl@ss-Code-Listen unterliegen einer kommerziellen Mitgliedslizenz (eCl@ss e.V.).
+Dürfen eCl@ss-Klassifizierungsknoten und -Attributdefinitionen für KoalixCRM-Installationen, die
+nicht von Quantalq betrieben werden, überhaupt importiert werden? Und wenn ja: Welche
+Vertriebsform ist lizenzrechtlich zulässig (separate Download-Anleitung, Operator-Import-Skript,
+kein Mitliefern im PyPI-Paket)?
+
+**Auswirkung:** Die technische Unterstützung von eCl@ss im Datenmodell ist unabhängig von dieser
+Frage korrekt. Die Frage betrifft ausschließlich, welche Onboarding-Dokumentation und welche
+Import-Artefakte für eCl@ss-Inhalte bereitgestellt werden dürfen.
+
+**Zuständig:** `kxcrm-requirements-engineer` klärt lizenzrechtliche Anforderung;
+@scaphilo entscheidet über Vertriebsstrategie.
+
+**Status:** Geschlossen (2026-05-05) — Gelöst durch ADR-0018 und ADR-0004 Amendment
+2026-05-05. Geschäftslogik hängt am KoalixCRM-eigenen kanonischen Attribut-Vokabular, nicht an
+einem Klassifizierungsstandard. Klassifizierungsstandards (eCl@ss, ETIM, GPC, UNSPSC) sind
+Adapter, die Attributdefinitionen und Mappings in das kanonische Vokabular einspeisen.
+Das Open-Source-Backend bündelt keinen lizenzpflichtigen Fremdinhalt. Betreiber, die eCl@ss
+nutzen möchten, importieren den Inhalt unter ihrer eigenen Mitgliedschaft / Concordance- /
+Webservice-Lizenz über betreiberseitige Werkzeuge — das ist eine Dokumentations- und
+Onboarding-Angelegenheit, keine Architekturentscheidung. Die ursprüngliche Frage nach der
+Vertriebsform für lizenzpflichtige Inhalte ist gegenstandslos, da eine Bündelung solcher
+Inhalte von Anfang an nicht vorgesehen war.
+
+---
+
+## OQ-0002 — Migrationsstrategie `ProductType` → `Product`
+
+**Referenz:** ADR-0003 (Produkt-Katalog-Backbone), Abschnitt „Negative Consequences"
+
+**Frage:** Die Umbenennung `ProductType` → `Product` bricht bestehende FK-Referenzen aus
+`contracts` und `accounting` (`crm_producttype`-Tabelle). Welche Strategie gilt: ein
+phasenweiser Ansatz analog zur Party-Migration (ADR-0001 §6) mit Shadow-FKs und Datenmigration,
+oder ein Big-Bang-Schnitt im Rahmen des v2.0.0-Majorrelease?
+
+**Auswirkung:** Betrifft den Umfang von Datenmigrations-PRs und die Rollback-Strategie.
+
+**Zuständig:** `kxcrm-requirements-engineer` formuliert Migrationsanforderung;
+@scaphilo / @Hacont entscheiden Vorgehen.
+
+**Status:** Offen (2026-05-03)
+
+---
+
+## OQ-0003 — Index-Strategie für getypte EAV-Wertetabellen
+
+**Referenz:** ADR-0004 (Klassifizierung und erweiterbare Attribute), Abschnitt „Getypte Wertetabellen"
+
+**Frage:** ADR-0004 schreibt vor, dass jede Wertetabelle (`ProductAttributeDecimal` usw.) einen
+zusammengesetzten Index auf `(product_id, attribute_definition_id)` benötigt. Werden darüber
+hinaus partielle Indizes (z. B. nur nicht-null-Werte) oder GIN-Indizes auf dem JSONB-Spiegel
+benötigt, um die anvisierten Listenseiten-Ladezeiten bei 10 000+ SKUs sicherzustellen?
+
+**Auswirkung:** Betrifft Performance-Anforderungen, die als Quality Attribute Scenarios
+(owned by `kxcrm-requirements-engineer`) formuliert werden sollten.
+
+**Zuständig:** `kxcrm-requirements-engineer` formuliert messbare Performance-Szenarien.
+
+**Status:** Offen (2026-05-03)
+
+---
+
+## OQ-0004 — Partitionierungsstrategie für `StockMovement`-Log
+
+**Referenz:** ADR-0011 (Lagerbewegungen und Ereignis-Log), Abschnitt „Negative Consequences"
+
+**Frage:** Der `StockMovement`-Log wächst monoton. Bei 10 Millionen+ Lagereinheiten und mehreren
+Bewegungen pro Einheit und Monat entstehen innerhalb eines Jahres hunderte Millionen Zeilen.
+Welche Partitionierungsstrategie gilt: monatliche Range-Partitionierung nach `occurred_at`
+(PostgreSQL declarative partitioning), Archivierung älterer Partitionen in Cold Storage (S3 +
+Parquet), oder beides? Ab welchem Datenbankvolumen greift die Partitionierung?
+
+**Auswirkung:** Betrifft Datenbankbetrieb, Backup-Strategie und die Archivierungsanforderungen
+des KoalixCRM-Betriebs. Kann als Quality Attribute Scenario (owned by
+`kxcrm-requirements-engineer`) formuliert werden.
+
+**Zuständig:** `kxcrm-requirements-engineer` formuliert messbare Kapazitäts-Szenarien;
+@scaphilo entscheidet Betriebsstrategie.
+
+**Status:** Geschlossen (2026-05-03) — PostgreSQL declarative Range-Partitionierung nach
+`occurred_at`, monatlich, vor erstem Datenlauf eingerichtet. Cold-Storage-Archivierung ist
+eine separate operative Policy; Auslöser ≈ 36 aktive Partitionen oder anhaltender
+Datenbankgrößendruck. Siehe ADR-0011.
+
+---
+
+## OQ-0005 — Synchrone vs. asynchrone `StockBalance`-Aktualisierung
+
+**Referenz:** ADR-0011 (Lagerbewegungen und Ereignis-Log), Abschnitt „Negative Consequences"
+
+**Frage:** Soll `StockBalance` (ADR-0010) synchron im selben Datenbank-Transaktion wie
+`StockMovement` aktualisiert werden (höherer Schreib-Overhead, aber sofortige Konsistenz),
+oder asynchron via Celery-Task (geringerer Transaktions-Overhead, aber temporäre
+Inkonsistenzfenster)? Wie lang ist ein akzeptables Inkonsistenzfenster für
+ATP-Abfragen im produktiven Betrieb?
+
+**Auswirkung:** Betrifft Performance-Anforderungen und Konsistenzgarantien; muss als Quality
+Attribute Scenario formuliert werden.
+
+**Zuständig:** `kxcrm-requirements-engineer` formuliert messbare Konsistenz- und
+Performance-Szenarien; @scaphilo / @Hacont entscheiden Architekturvariante.
+
+**Status:** Geschlossen (2026-05-03) — Synchrone `StockBalance`-Aktualisierung im selben
+Datenbank-Transaktion wie `StockMovement` festgelegt; asynchrone Variante via Celery
+abgelehnt, da ATP-Korrektheit finanziell tragend ist und Überverkäufe nicht tolerierbar sind.
+Siehe ADR-0011.
+
+---
+
+## OQ-0006 — Archivierung dekommissionierter `SerialUnit`-Einträge
+
+**Referenz:** ADR-0012 (Lebenszeit, Charge, Los und Seriennummernverfolgung), Abschnitt
+„Negative Consequences"
+
+**Frage:** Dekommissionierte `SerialUnit`-Einheiten (`decommissioned_at` gesetzt) wachsen
+mit der Zeit auf Zigtausende Zeilen. Sollen diese Einheiten in eine Archivtabelle verschoben
+werden (mit verlangsamter Traceability-Abfrage über zwei Tabellen), soft-deleted bleiben
+(volle Traceability, wachsende Tabelle), oder gibt es eine Aufbewahrungsfrist nach der die
+Einträge gelöscht werden dürfen (regulatorische Anforderung)?
+
+**Auswirkung:** Betrifft Datenbankgröße, Traceability-Anforderungen und ggf. regulatorische
+Aufbewahrungspflichten (Pharma, Lebensmittel).
+
+**Zuständig:** `kxcrm-requirements-engineer` klärt regulatorische Aufbewahrungspflichten;
+@scaphilo entscheidet Archivierungsstrategie.
+
+**Status:** Geschlossen (2026-05-03) — Dekommissionierte `SerialUnit`-Zeilen werden dauerhaft
+per Soft-Delete gehalten; keine Archivtabelle; partieller Index auf `decommissioned_at IS NULL`
+für Hot-Path-Performance; Traceability über Jahrzehnte in einer Tabelle. Workspace-weite
+Aufbewahrungsuntergrenze (`retention_floor`) als additive Schutzsperre konfigurierbar. Siehe
+ADR-0012.
+
+---
+
+## OQ-0007 — Mehrstufige BOM-Explosion bei `EXPLODE_ON_PICK`-Kits
+
+**Referenz:** ADR-0014 (Montage/Kitting und geteilter Bestand), Abschnitt „Negative Consequences"
+
+**Frage:** Bei mehrstufigen Stücklisten (Baugruppe enthält Unterbaugruppen, die ihrerseits
+Komponenten enthalten) muss die `EXPLODE_ON_PICK`-Logik die gesamte Baumstruktur rekursiv
+auflösen. Wie viele BOM-Ebenen sind in der Praxis für KoalixCRM-Mandanten typisch? Gibt es
+eine Tiefenbeschränkung, ab der eine manuelle Vorkommissionierung (`PREASSEMBLE`) erzwungen
+werden soll? Ist eine rechenintensive Explosion zum Kommissionierzeitpunkt (synchron) oder
+eine vorab berechnete Explosionsliste (Celery-Task bei BOM-Änderung) die richtige Strategie?
+
+**Auswirkung:** Betrifft Performance-Anforderungen für die Auftragserfüllung und die
+Komplexität der Fertigungssteuerungslogik.
+
+**Zuständig:** `kxcrm-requirements-engineer` formuliert messbare Performance-Szenarien
+für Kit-Explosion; @scaphilo entscheidet Betriebsstrategie.
+
+**Status:** Geschlossen (2026-05-03) — Celery-Task berechnet abgeflachte BOM-Explosion in
+`BillOfMaterialsExplosion`-Snapshot vor; Pick-Zeitpfad liest Snapshot; synchrone Neuberechnung
+nur bei BOM-Versionsabweichung (selten). Weiche Tiefengrenze: 10 Ebenen (Warnung +
+`PREASSEMBLE`-Empfehlung); harte Tiefengrenze: 20 Ebenen (Ablehnung, erzwingt `PREASSEMBLE`).
+Siehe ADR-0014.
+
+---
+
+## OQ-0008 — Standard-kind-Wert für migrierte ProductType-Einträge
+
+- **Raised:** 2026-05-03
+- **Context:** REQ-0007 (Migration ProductType → Product), ADR-0003 (Backbone-Entscheidung)
+- **Frage:** ADR-0003 definiert fünf `kind`-Werte (`SERVICE`, `TRADING_GOOD`, `MANUFACTURED_GOOD`,
+  `KIT`, `RAW_MATERIAL`). Bestehende `ProductType`-Einträge tragen keinen `kind`-Wert. Welcher
+  `kind`-Standardwert wird bei der Datenmigration für alle bisherigen `ProductType`-Zeilen
+  verwendet, für die kein Branchenkontext bekannt ist? Soll der Wert null bleiben (optionales
+  `kind`-Feld bis zur Nachpflege) oder muss ein konservativer Standardwert (`TRADING_GOOD`)
+  gesetzt werden?
+- **Blocks:** REQ-0007 AC-4 (kind-Standardwert in der Migration)
+
+---
+
+## OQ-0009 — Unveränderlichkeit des kind-Felds nach Anlage abhängiger Objekte
+
+- **Raised:** 2026-05-03
+- **Context:** REQ-0001 (Product-Backbone), REQ-0015 (BillOfMaterials), REQ-0016 (ServiceProfile)
+- **Frage:** REQ-0001 beschreibt, dass der `kind`-Wert unveränderlich ist, sobald abhängige
+  Objekte (z. B. `BillOfMaterials` für `MANUFACTURED_GOOD`, `ServiceProfile` für `SERVICE`)
+  existieren. Gilt diese Invariante auch für den Fall, dass `ProductVariant`-Einträge existieren?
+  Und gilt sie bereits ab der Anlage eines einzigen Attributwerts (da `AttributeSet` kind-abhängig
+  ist)? Die vollständige Liste der Zustände, die einen `kind`-Wechsel sperren, ist in der
+  Applikationsschicht zu definieren.
+- **Blocks:** REQ-0001 AC-4 (Unveränderlichkeit), REQ-0015 AC-1 (kind-Invariante BOM), REQ-0016 AC-2 (kind-Invariante ServiceProfile)
+
+---
+
+## OQ-0010 — Soft-Reservierungs-Businessstep: Planungs- vs. physisches `rental_out`
+
+- **Raised:** 2026-05-04
+- **Context:** UC-0007 (Mietangebot erstellen), ADR-0011 (Lager- und Lebenszyklus-Ereignis-Log)
+- **Frage:** ADR-0011 enthält `rental_out` im `business_step`-Wertebereich, definiert aber nicht den Unterschied zwischen einem geplanten Mietbeginn (Angebot gespeichert, Gerät noch im Lager) und einem physisch vollzogenen Mietbeginn (Übergabe an Kunden stattgefunden). GS1 EPCIS 2.0 CBV kennt das `disposition`-Attribut (z. B. `in_progress`) für diesen Zweck. Soll das `StockMovement`-Modell ein `disposition`-Feld erhalten, oder wird ein separater Businessstep-Wert (z. B. `planned_rental_out`) für Soft-Reservierungen eingeführt?
+- **Blocks:** UC-0007 BAC-6 (EPCIS-CBV-Konsistenz), UC-0007 BAC-3 (Soft-Reservierung beim Angebotsspeichern)
+
+**Status:** Geschlossen (2026-05-04) — `StockMovement` erhält ein `disposition`-Feld (EPCIS CBV Enum, nullable; Werte: `in_progress`, `reserved`, `in_transit`, `in_possession`, `returned`, `destroyed`); geplante Mietausgabe trägt `disposition = reserved`, physische Übergabe `disposition = in_possession`; kein separater `planned_rental_out`-Businessstep. Siehe ADR-0011, Amendment 2026-05-04.
+
+---
+
+## OQ-0011 — Zeitfensterbasierte Verfügbarkeitsfunktion für Miet-ATP
+
+- **Raised:** 2026-05-04
+- **Context:** UC-0007 (Mietangebot erstellen), ADR-0010 (Lagerbestandszustände und Reservierungen)
+- **Frage:** Die skalare ATP-Formel aus ADR-0010 (`ATP = qty_on_hand − qty_booked − qty_reserved_for_document + qty_ordered`) ist für Mietanwendungen nicht ausreichend, da Miet-Verfügbarkeit eine Zeitfensterfrage ist: `is_free(serial_unit, [start, end])`. Welcher API-Endpunkt und welche Datenbankabfragestrategie implementieren die zeitfensterbasierte Verfügbarkeitsprüfung pro `SerialUnit`? Wird ein dedizierter Endpunkt (`GET /api/products/{id}/serial-units/availability/`) oder eine Erweiterung von `StockBalance` um zeitgebundene Reservierungsauswertung spezifiziert?
+- **Blocks:** UC-0007 BAC-1 (Verfügbarkeitskalender), UC-0007 BAC-2 (Überschneidungskonflikt)
+
+**Status:** Geschlossen (2026-05-04) — `is_free(serial_unit, start, end) -> bool` und `free_windows(product, start, end) -> list[(serial_unit, [(from, to)])]` als berechnete Abfrage über `StockReservation` (ohne materialisierte `UnitAvailabilityWindow`-Tabelle) definiert; dedizierter Endpunkt `GET /api/products/{id}/serial-units/availability/` festgelegt. Siehe ADR-0010, Amendment 2026-05-04.
+
+---
+
+## OQ-0012 — Kopplung Angebots-Lebenszyklus an `StockReservation`-Übergänge
+
+- **Raised:** 2026-05-04
+- **Context:** UC-0007 (Mietangebot erstellen), ADR-0010 (Lagerbestandszustände und Reservierungen)
+- **Frage:** Kein bestehendes ADR definiert, welche Angebotszustände (DRAFT, SENT, ACCEPTED, REJECTED, EXPIRED) eine `StockReservation` erzeugen, aufrechterhalten oder auf `CANCELLED` setzen. Welche Zustandsübergänge des Angebots lösen welche `StockReservation`-Zustandsübergänge aus? Was passiert, wenn zwei konkurrierende Angebote für dieselbe `SerialUnit` und denselben Zeitraum gleichzeitig im Status SENT sind?
+- **Blocks:** UC-0007 BAC-4 (Freigabe der Reservierung), UC-0007 Alternativablauf C
+
+**Status:** Geschlossen (2026-05-04) — Zustandsmaschine Angebot → `StockReservation` mit neuem `reservation_status`-Feld (`PROVISIONAL`/`CONFIRMED`) definiert; DRAFT und SENT erzeugen `PROVISIONAL`-Reservierung, ACCEPTED überführt in `CONFIRMED`; REJECTED/EXPIRED/CANCELLED setzen `status = CANCELLED`; Konkurrenzregel: first-SENT-wins (FIFO nach Zeitstempel), spätere SENT-Versuche auf dieselbe SerialUnit/Zeitfenster-Kombination werden mit HTTP 409 abgewiesen. Siehe ADR-0010, Amendment 2026-05-04.
+
+---
+
+## OQ-0013 — Abgrenzung `StockReservation` vs. `RentalAssignment` als autoritative Belegungsquelle
+
+- **Raised:** 2026-05-04
+- **Context:** UC-0007 (Mietangebot erstellen), ADR-0010, ADR-0013
+- **Frage:** ADR-0010 definiert `StockReservation` für Angebotsreservierungen; ADR-0013 definiert `RentalAssignment` für aktive Mietverträge. Beide können denselben `SerialUnit`-Zeitraum blockieren. Welche Entität ist die autoritative Quelle für den Verfügbarkeitskalender — und müssen beide Quellen beim Aufbau des Kalenders vereinigt werden? Wie verhindert die Applikationsschicht, dass `StockReservation` und `RentalAssignment` denselben Zeitraum doppelt blockieren?
+- **Blocks:** UC-0007 BAC-1 (Verfügbarkeitskalender), UC-0007 Nachbedingungen
+
+**Status:** Geschlossen (2026-05-04) — `StockReservation` (mit neuem `kind`-Feld: `SALE`, `RENTAL`, `PROJECT_HOLD`) ist alleinige Belegungsquelle für den Verfügbarkeitskalender; `RentalAssignment` bleibt als Spezialisierung (physische Übergabephase) erhalten und verweist per Pflicht-FK auf die erfüllte `StockReservation`; Doppelzählung ist strukturell ausgeschlossen, da `StockReservation` beim Anlegen des `RentalAssignment` auf `status = FULFILLED` gesetzt wird; Migrationspfad (retroaktive synthetische `StockReservation` für historische `RentalAssignment`-Einträge) festgelegt. Siehe ADR-0010 und ADR-0013, Amendment 2026-05-04.
+
+---
+
+## OQ-0014 — Halter-Zeitleiste als dedizierter Abfragepfad in ADR-0015
+
+- **Raised:** 2026-05-04
+- **Context:** UC-0007 (Mietangebot erstellen), ADR-0015 (Geräte-Lebenszyklus-Historie)
+- **Frage:** ADR-0015 definiert den Abfragepfad „Vollständige Einheitenhistorie" (alle `StockMovement`-Zeilen per `serial_unit_id`, sortiert nach `occurred_at`). Eine spezifische Projektion „Halter-Zeitleiste" — wer hat die Einheit in welchem Zeitfenster gehalten, abgeleitet aus `rental_out`/`rental_return`-Paaren und `owner_party`-Feldern — ist kein eigenständiger Abfragepfad in ADR-0015. Soll ADR-0015 diesen Abfragepfad ergänzen? Wird er als dedizierter API-Endpunkt oder als materialisierte Sicht implementiert?
+- **Blocks:** UC-0007 BAC-5 (Lebenszyklus-Log — Halter-Zeitlinie), UC-0007 BAC-1
+
+**Status:** Geschlossen (2026-05-04) — Vierter Lebenszyklus-Abfragepfad „Halter-Zeitleiste" (`who_held_it_when(serial_unit) -> list[(holder_party, from, to)]`) als Projektion über `StockMovement.disposition ∈ {in_possession, returned}` (ADR-0011, Amendment OQ-0010) als berechnete Abfrage definiert; dedizierter Endpunkt `GET /api/serial-units/{id}/holder-timeline/` festgelegt; keine materialisierte Sicht. Siehe ADR-0015, Amendment 2026-05-04.
+
+---
+
+## OQ-0015 — Put-Away-Strategie beim Wareneingang: Service-Algorithmus oder konfigurierbares Attribut?
+
+- **Raised:** 2026-05-04
+- **Context:** UC-0010 (Wareneingang mit Lieferschein und Lagerplatzvorschlag)
+- **Question:** UC-0010 beschreibt die gewünschte Lagerplatzvorschlag-Regel beim Wareneingang (1. bestehender Stellplatz mit gleichem Produkt + Charge bevorzugt; 2. freier Stellplatz nächster passender Größe). Kein bestehendes ADR legt fest, ob diese Regel als eigenständiger Put-Away-Algorithmus im Backend-Service implementiert wird, als konfigurierbare Strategie pro Produkt (Attribut auf `Product` oder `Location`), oder als mandantenweite Konfiguration. Die Entscheidung hat Auswirkungen auf die Schnittstelle des `POST /api/stock/movements/`-Endpunkts und auf die Testbarkeit der Vorschlagslogik.
+- **Blocks:** UC-0010 BAC-4 (Lagerplatzvorschlag-Regel)
+- **Zuständig:** `kxcrm-architect` entscheidet Implementierungsstrategie; `kxcrm-requirements-engineer` präzisiert Anforderung nach Entscheid.
+
+**Status:** Offen (2026-05-04) — Das `GoodsReceipt`-Aggregat (ADR-0017) ist etabliert; das Aggregat nimmt `destination_location` je Position auf. Die einzige verbleibende Entscheidung ist der Algorithmus, der diesen Vorschlag erzeugt. OQ-0015 bleibt offen bis dieser Algorithmus als separates ADR entschieden wird.
+
+---
+
+## OQ-0016 — Identifier-Registry: eigenständige Entität oder Suchfunktion im Endpunkt?
+
+- **Raised:** 2026-05-04
+- **Context:** UC-0009 (Komponentenentnahme), UC-0010 (Wareneingang)
+- **Question:** Beide Use Cases benötigen einen Scan-Auflösungsmechanismus, der einen gescannten Barcode-Wert gegen mehrere Identifier-Typen auflöst: `Product.gtin` (GS1 GTIN), `Location.external_ref` (ADR-0009), `SerialUnit.global_uid` (ADR-0012). Kein bestehendes ADR definiert diese Auflösungslogik als eigenständige Identifier-Registry-Entität oder als wiederverwendbare Funktion. Soll eine dedizierte `IdentifierRegistry`-Entität oder ein zentraler `POST /api/stock/scan/`-Endpunkt als kanonische Auflösungsschicht eingeführt werden? Welche Reihenfolge gilt bei Identifier-Kollisionen (z. B. ein Wert, der sowohl einer GTIN als auch einem `external_ref` entspricht)?
+- **Blocks:** UC-0009 BAC-1, BAC-2, BAC-3 (Scan-Auflösungsvarianten); UC-0010 BAC-3 (Scan-Auflösung pro Position)
+- **Zuständig:** `kxcrm-architect` entscheidet Architektur der Identifier-Registry; `kxcrm-requirements-engineer` präzisiert Anforderung nach Entscheid.
+
+**Status:** Geschlossen (2026-05-04) — GS1 AI-gesteuerter kanonischer Endpunkt `POST /api/v1/scan/resolve` eingeführt; zweistufige Auflösungsreihenfolge (GS1 AI-Parsing zuerst, Freitext-Abgleich bei fehlendem AI-Präfix); keine eigenständige Registry-Entität. Kollisionsregel: GS1 schlägt Freitext; Freitext-Multi-Hit → HTTP 409 mit Kandidatenliste. Siehe ADR-0016.
+
+---
+
+## OQ-0017 — business_step „inventorying" fehlt im ADR-0011-Wertebereich
+
+- **Raised:** 2026-05-04
+- **Context:** UC-0009 (Komponentenentnahme mit Bestandsbestätigung)
+- **Question:** UC-0009 verwendet `business_step = inventorying` für den Korrektur-`StockMovement` bei einer Ad-hoc-Zykluszählung. Der Wertebereich von ADR-0011 enthält `inventorying` nicht. Soll ADR-0011 um `inventorying` als gültigen `business_step`-Wert erweitert werden? Ist `inventorying` ein Standard-GS1-EPCIS-CBV-Businessstep oder ein projektspezifischer Wert?
+- **Blocks:** UC-0009 BAC-5 (Buchung des Korrektur-Events)
+- **Zuständig:** `kxcrm-architect` entscheidet Amendment zu ADR-0011; `kxcrm-requirements-engineer` aktualisiert UC-0009 BAC-5 nach Entscheid.
+
+**Status:** Geschlossen (2026-05-04) — `inventorying` als projektspezifischer `business_step`-Wert in ADR-0011 ergänzt; Semantik: mengenloser Verifikationsdatensatz (qty = null), kein Saldo-Update; Diskrepanzfall erzeugt separaten `adjustment`-Event mit `reason_code = cycle_count_discrepancy`. Siehe ADR-0011, Amendment 2026-05-04 (OQ-0017).
+
+---
+
+## OQ-0018 — GoodsReceipt-Datenmodell fehlt in bestehenden ADRs
+
+- **Raised:** 2026-05-04
+- **Context:** UC-0010 (Wareneingang mit Lieferschein und Lagerplatzvorschlag)
+- **Question:** UC-0010 setzt ein `GoodsReceipt`-Aggregat mit Status-Enum (`IN_PROGRESS`, `COMPLETED`) und `GoodsReceiptPosition`-Einträgen voraus. Kein bestehendes ADR (ADR-0009 bis ADR-0015) definiert dieses Aggregat. Soll ein neues ADR-0017 das `GoodsReceipt`-Datenmodell spezifizieren? Welche Felder sind erforderlich (Lieferant, Lieferschein-Nummer, Buchungsdatum, Positions-Statusmaschine)? Wie verhält sich `GoodsReceipt` bei Teillieferungen über mehrere Tage (mehrere Ingestions-Calls auf dasselbe Aggregat)?
+- **Blocks:** UC-0010 BAC-2 (GoodsReceipt-Statusübergänge), UC-0010 BAC-7 (Verknüpfung über document_id)
+- **Zuständig:** `kxcrm-architect` erstellt ADR-0017; `kxcrm-requirements-engineer` aktualisiert UC-0010 nach Entscheid.
+
+**Status:** Geschlossen (2026-05-04) — `GoodsReceipt`-Aggregat mit Status-Enum (`DRAFT`, `IN_PROGRESS`, `COMPLETED`, `CANCELLED`) und `GoodsReceiptLine`-Kindentitäten mit `line_status ∈ {PENDING, CONFIRMED, MISMATCHED}` eingeführt; COMPLETED-Übergang erzeugt synchrone `StockMovement`-Buchungen je Position. Teillieferungen sind über mehrfache Ingestion-Calls auf dasselbe IN_PROGRESS-Aggregat möglich. Siehe ADR-0017.
