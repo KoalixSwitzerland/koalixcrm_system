@@ -2,6 +2,16 @@
 .env
 .env.*
 !.env.example
+# .env.claude is the docker-mcp's canonical env file: COMMITTED so the integrity
+# gate can verify it against origin/main|develop (a tracked, reviewed env file is
+# what stops an agent remounting host paths via *_HOST_DIR). It is machine-
+# agnostic — per-machine host roots come from the docker-mcp's own env
+# (HOST_REPOS_ROOT / HOST_DATA_ROOT) — and holds NO secrets (those are in
+# repo-configs/secrets.env via KOALIXCRM_ENV_DIR).
+!.env.claude
+# Per-developer NATIVE env files (.env.aaron, .env.<name>) stay gitignored: the
+# docker-mcp never uses them (it is hard-tied to .env.claude), and they carry
+# machine-specific absolute paths. Do NOT commit them.
 
 # Secrets (never commit)
 secrets.env
