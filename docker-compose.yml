@@ -24,7 +24,20 @@
 #
 # Environment variables (set in .env.<yourname>):
 #   KOALIXCRM_DIR       — Absolute path to koalixcrm repo        (shell-readable)
-#   KOALIXCRM_DB_DIR    — Absolute path to DB/secrets directory   (shell-readable)
+#   KOALIXCRM_DB_DIR    — Absolute path to the DB directory; the stack mounts
+#                         ${KOALIXCRM_DB_DIR}/db -> /db (db.sqlite3 +
+#                         integration.sqlite3). Point this at the registry-managed
+#                         data tree (…/koalixcrm/local-dev/live) so the git-mcp
+#                         backup sweep captures the live DB.
+#   KOALIXCRM_MINIO_DIR — Absolute path to the MinIO data dir, bind-mounted into
+#                         the minio container at /data (registry: minio_bucket
+#                         koalixcrm-pdf-exports under …/koalixcrm-system/local-dev/
+#                         live/minio).
+#   KOALIXCRM_ENV_DIR   — Absolute path to the directory holding secrets.env.
+#                         Keep this OUTSIDE the backed-up data tree and out of the
+#                         agent's reach (the MCP-private repo-configs tree) so
+#                         credentials are neither backed up nor LLM-visible.
+#                         Defaults to KOALIXCRM_DB_DIR for native setups.
 #   KOALIXCRM_SYSTEM_DIR — Absolute path to this repo             (shell-readable, default: .)
 #   KOALIXCRM_FOP_DIR   — Absolute path to koalixcrm-fop-service repo
 #                         (only needed for unit-pdf-service / integration-pdf-service
@@ -37,13 +50,16 @@
 # see different filesystem paths — e.g. WSL shell + Docker Desktop on Windows):
 #   KOALIXCRM_HOST_DIR        — defaults to KOALIXCRM_DIR
 #   KOALIXCRM_DB_HOST_DIR     — defaults to KOALIXCRM_DB_DIR
+#   KOALIXCRM_MINIO_HOST_DIR  — defaults to KOALIXCRM_MINIO_DIR
 #   KOALIXCRM_SYSTEM_HOST_DIR — defaults to KOALIXCRM_SYSTEM_DIR
 #   KOALIXCRM_FOP_HOST_DIR    — defaults to KOALIXCRM_FOP_DIR
 #
 # Secrets:
 #   All secrets (OIDC credentials if needed for cloud, API keys) are loaded
-#   from ${KOALIXCRM_DB_DIR}/secrets.env — see docker/secrets.env.example.
+#   from ${KOALIXCRM_ENV_DIR}/secrets.env — see docker/secrets.env.example.
 #   This is the ONLY place where secrets live; everything else is inlined.
+#   ENV_DIR is kept separate from DB_DIR so secrets never land in the backed-up
+#   data tree (mirrors the WFS qq_workflow_support_webapp pattern).
 #
 # Developer env files:
 #   Each developer maintains their own .env.<name> file (gitignored).
@@ -89,7 +105,11 @@ services:
       - "${MINIO_API_PORT:-9010}:9000"
       - "${MINIO_CONSOLE_PORT:-9011}:9001"
     volumes:
-      - minio_data:/data
+      # Bind-mounted to the registry-managed data tree so the bucket data lands
+      # under <repo-data>/koalixswitzerland/products/koalixcrm-system/local-dev/
+      # live/minio/ and is picked up by the git-mcp backup sweep (registry
+      # local_data: minio_bucket koalixcrm-pdf-exports). Survives `down -v`.
+      - ${KOALIXCRM_MINIO_HOST_DIR:-${KOALIXCRM_MINIO_DIR:-./../koalixcrm_data/minio}}:/data
     networks:
       - koalixcrm-net
     healthcheck:
@@ -136,7 +156,7 @@ services:
       context: ${KOALIXCRM_DIR:-./../koalixcrm}
       dockerfile: docker/dev/Dockerfile.django
     env_file:
-      - path: ${KOALIXCRM_DB_DIR:-./../koalixcrm_data}/secrets.env
+      - path: ${KOALIXCRM_ENV_DIR:-${KOALIXCRM_DB_DIR:-./../koalixcrm_data}}/secrets.env
         required: true
     environment:
       # --- Django Core ---
@@ -200,7 +220,7 @@ services:
       context: ${KOALIXCRM_DIR:-./../koalixcrm}
       dockerfile: docker/dev/Dockerfile.django
     env_file:
-      - path: ${KOALIXCRM_DB_DIR:-./../koalixcrm_data}/secrets.env
+      - path: ${KOALIXCRM_ENV_DIR:-${KOALIXCRM_DB_DIR:-./../koalixcrm_data}}/secrets.env
         required: true
     environment:
       # --- Django Core ---
@@ -260,7 +280,7 @@ services:
   pdf-service:
     image: ghcr.io/koalixswitzerland/koalixcrm_pdf_service:${PDF_SERVICE_IMAGE_TAG:-develop}
     env_file:
-      - path: ${KOALIXCRM_DB_DIR:-./../koalixcrm_data}/secrets.env
+      - path: ${KOALIXCRM_ENV_DIR:-${KOALIXCRM_DB_DIR:-./../koalixcrm_data}}/secrets.env
         required: true
     environment:
       # --- AWS region / credentials (dummy for local MinIO+ElasticMQ) ---
@@ -307,7 +327,7 @@ services:
       context: ${KOALIXCRM_DIR:-./../koalixcrm}
       dockerfile: docker/dev/Dockerfile.celery
     env_file:
-      - path: ${KOALIXCRM_DB_DIR:-./../koalixcrm_data}/secrets.env
+      - path: ${KOALIXCRM_ENV_DIR:-${KOALIXCRM_DB_DIR:-./../koalixcrm_data}}/secrets.env
         required: true
     environment:
       - DJANGO_SETTINGS_MODULE=projectsettings.settings.development_docker_settings
@@ -427,7 +447,7 @@ services:
     # live MinIO, ElasticMQ and the backend+celery services running.
     command: ["pytest", "tests/integration/", "-m", "integration", "-v", "--tb=short", "--disable-warnings", "--cov=koalixcrm", "--cov-report=xml:test_report/coverage.xml"]
     env_file:
-      - path: ${KOALIXCRM_DB_DIR:-./../koalixcrm_data}/secrets.env
+      - path: ${KOALIXCRM_ENV_DIR:-${KOALIXCRM_DB_DIR:-./../koalixcrm_data}}/secrets.env
         required: true
     environment:
       # --- Django Core ---
@@ -487,7 +507,7 @@ services:
         pytest tests/e2e/ -m 'front_end_tests' -v --tb=short --alluredir=/allure-results
       "
     env_file:
-      - path: ${KOALIXCRM_DB_DIR:-./../koalixcrm_data}/secrets.env
+      - path: ${KOALIXCRM_ENV_DIR:-${KOALIXCRM_DB_DIR:-./../koalixcrm_data}}/secrets.env
         required: true
     environment:
       # --- Django Core ---
@@ -612,7 +632,6 @@ services:
 # --- Volumes & networks ------------------------------------------------------
 
 volumes:
-  minio_data:
   allure_results:
   allure_report:
   gradle_cache:
