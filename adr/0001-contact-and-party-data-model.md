@@ -10,6 +10,29 @@
   guidance: *standardize wherever possible*. Concretely this means the **UBL 2.3 `Party`
   vocabulary** is authoritative for naming and structure, per §2 and §3 of this document.
   Implementation tracked under issue #198; phased rollout per §6.
+- **2026-04-17 — v2.0.0 clean-break amendment.** @scaphilo confirmed the Party migration ships
+  with the **v1.14.0 → v2.0.0** major-version bump, which explicitly trades API
+  backwards-compatibility for a simpler migration. Downstream consequences:
+  - **Data migration stays** — the backfill (PR #393, `0005_backfill_party.py`) still moves the
+    existing Contact/Customer/Supplier/Person rows into the new Party tables. Nothing is lost.
+  - **API backwards-compatibility is dropped.** No deprecation headers, no `Deprecation:` /
+    `Sunset:` HTTP shims, no read-only legacy routes, no "keep the legacy FK as a nullable
+    shadow for one release", no transitional dual-admin / dual-serializer / dual-viewset
+    layers, no soft-warning validation before a hard constraint.
+  - **§6 rollout is re-shaped:** phases 1–3 (additive schema, backfill, new-FK addition) stay
+    as-is and are already committed on branches `issue/392-…`, `issue/393-…`, `issue/394-…`.
+    Phase 4 expands into the v2.0.0 cutover that drops legacy models, FK columns, admin, DRF
+    serializers/viewsets, REST routes, Python DTOs and Java DTOs in a single PR, tightens the
+    new FKs to NOT NULL, renames the transitional classes (`PartyContact` → `Contact`,
+    `PartyEmail` → `EmailAddress`), restructures the `djangoUserExtension` satellite models
+    that inherited from the legacy base classes, and aligns the PDF worker's XSL-FO builders
+    with the Party-shaped JSON in the same PR.
+  - **v2.0.0 is cut from the post-phase-4 commit.** No intermediate release between #3 and #4;
+    the "both shapes coexisting" window is internal to the release train.
+
+    The detailed amended rollout is tracked in
+    `koalixcrm/PLAN_contact_party_data_model.md` — see the "v2.0.0 clean-break simplifications"
+    section there for the current source of truth on per-PR scope.
 - **Relates to:**
   - GitHub issue [KoalixSwitzerland/koalixcrm#198](https://github.com/KoalixSwitzerland/koalixcrm/issues/198) — "Reorganize the contact management"
   - `koalixcrm/PLAN_commercial_document_ubl_alignment.md` — explicitly defers the
