@@ -50,7 +50,15 @@ oder ein Big-Bang-Schnitt im Rahmen des v2.0.0-Majorrelease?
 **Zuständig:** `kxcrm-requirements-engineer` formuliert Migrationsanforderung;
 @scaphilo / @Hacont entscheiden Vorgehen.
 
-**Status:** Offen (2026-05-03)
+**Status:** Geschlossen (2026-06-27) — OQ-0002 framte die Umbenennung als FK-Bruch; tatsächlich
+handelt es sich um eine RENAME + APP-RELOCATION ohne per-Zeile-FK-Rewrite. Die gewählte Strategie
+ist ein v2.0.0-Schnitt via Django `SeparateDatabaseAndState`: eine einzige Migration benennt
+`crm.ProductType` → `products.Product` um; die DB-Operation ist
+`ALTER TABLE crm_producttype RENAME TO products_product`; FK-Constraints aus `contracts` und
+`accounting` folgen automatisch; das leere `Product`-Hüllenmodell entfällt im selben Schritt;
+die Migration ist reversibel; ein Dry-Run-Management-Command prüft Zeilenzahlen und FK-Integrität
+vorab. Ein langlebiger phasenweiser Dual-Stack entfällt. Die Änderung wird als BREAKING
+v2.0.0-Schnitt ausgeliefert. Siehe ADR-0003 Amendment 2026-06-27.
 
 ---
 
@@ -180,6 +188,14 @@ Siehe ADR-0014.
   `kind`-Feld bis zur Nachpflege) oder muss ein konservativer Standardwert (`TRADING_GOOD`)
   gesetzt werden?
 - **Blocks:** REQ-0007 AC-4 (kind-Standardwert in der Migration)
+
+**Status:** Geschlossen (2026-06-27) — `TRADING_GOOD` ist der Standardwert für `kind` bei allen
+migrierten `ProductType`-Zeilen. Das Feld ist Pflichtfeld (ADR-0019 / REQ-0001 AC-1); `null` ist
+keine Option. `TRADING_GOOD` ist der am wenigsten einschränkende Wert: er erfordert kein
+`ServiceProfile`, keine `BillOfMaterials`-Stückliste und impliziert keinen BOM; Lagerbestand ist
+erlaubt. Das ADR-0019-Sperr-Set für frisch migrierte Zeilen ist leer; `kind` bleibt nach der
+Migration frei korrigierbar — Betreiber reklassifizieren Einträge ohne Sperrwirkung. Der Wert wird
+in der Migrations-Dokumentation festgehalten (REQ-0007 AC-4). Siehe ADR-0003 Amendment 2026-06-27.
 
 ---
 
