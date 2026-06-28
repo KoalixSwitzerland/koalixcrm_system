@@ -195,6 +195,18 @@ Siehe ADR-0014.
   Applikationsschicht zu definieren.
 - **Blocks:** REQ-0001 AC-4 (Unveränderlichkeit), REQ-0015 AC-1 (kind-Invariante BOM), REQ-0016 AC-2 (kind-Invariante ServiceProfile)
 
+**Status:** Geschlossen (2026-06-27) — Das vollständige Sperr-Set ist in ADR-0019
+(Produkt-`kind`-Invarianten und Gating abhängiger Objekte) definiert. `kind` ist frei änderbar,
+solange keines der folgenden Elemente existiert: `ServiceProfile`, `BillOfMaterials`,
+`ProductionOrder`, eine Lagertatsache (`StockMovement`, `SerialUnit`, `Batch`, `OnHandRecord`),
+ein gesetzter `kit_mode`-Wert oder ein Attributwert in einem kind-gebundenen `AttributeSet`.
+Das bloße Vorhandensein von `ProductVariant`-Einträgen sperrt `kind` nicht — `ProductVariant`
+ist kind-agnostisch. Ein Attributwert in einem kind-gebundenen `AttributeSet` (ADR-0004, `kind`
+als Achse) gehört zum Sperr-Set. Durchsetzung erfolgt durch die `ProductKindPolicy`-Komponente
+in der Applikationsschicht; kein Datenbankconstraint. REQ-0015 AC-1 erfordert eine
+Folgekorrektur durch den `kxcrm-requirements-engineer` (BOM-Gating auf
+`kind ∈ {MANUFACTURED_GOOD, KIT}` ausweiten). Siehe ADR-0019.
+
 ---
 
 ## OQ-0010 — Soft-Reservierungs-Businessstep: Planungs- vs. physisches `rental_out`
