@@ -172,6 +172,46 @@ Ausgangspunkt für `BillOfMaterials`.
   Invariante, dass jede `SerialUnit` einen `Product`-FK trägt (ADR-0012, ADR-0015).
 - 2026-05-05: Amendment — Layer-1-Felder des Minimal Core Product ergänzt (siehe unten).
 - 2026-06-27: Amendment — Migrationsstrategie ProductType → Product als v2.0.0-Schnitt per `SeparateDatabaseAndState` ratifiziert; Standard-`kind` `TRADING_GOOD` für migrierte Zeilen festgelegt. Schließt OQ-0002 und OQ-0008.
+- 2026-06-28: Amendment — Topologie und Schlüsselung per ADR-0021 korrigiert (siehe unten).
+
+---
+
+## Amendment 2026-06-28 — Topologie und Schlüsselung (ADR-0021 ist die autoritative Quelle)
+
+ADR-0021 korrigiert zwei Ungenauigkeiten in der ursprünglichen Backbone-Beschreibung dieses ADR
+und ist die autoritative Quelle für alle Fragen der 3-Ebenen-Topologie und Feldschlüsselung.
+
+### Korrektur 1 — Was `ProductFamily` gruppiert
+
+Die Beschreibung in Zeile 70 lautet: „`ProductFamily` (workspace-scoped) gruppiert Varianten
+einer Produktlinie." Diese Formulierung ist falsch.
+
+**Korrekte Aussage:** `ProductFamily` gruppiert `Product`-Objekte, nicht `ProductVariant`-Objekte.
+Ein `Product` gehört zu höchstens einer `ProductFamily`; ein `Product` ohne `ProductFamily` ist
+ein gültiger Zustand.
+
+### Korrektur 2 — FK-Richtung von `ProductVariant`
+
+Die Beschreibung in Zeile 72 lautet: „`ProductVariant` (workspace-scoped) hält eine Zeile pro
+tatsächlicher SKU mit FK auf `ProductFamily`." Diese FK-Richtung ist falsch.
+
+**Korrekte Aussage:** `ProductVariant` trägt einen FK auf `Product` (nicht auf `ProductFamily`).
+Jedes `Product` besitzt ≥1 `ProductVariant`.
+
+### Korrektur 3 — Schlüsselung handels- und logistikspezifischer Felder
+
+Die ursprüngliche Backbone-Definition und das Amendment 2026-05-05 führen `sku`, `gtin`, `mpn`,
+`weight_kg` und `dimensions_*` als Felder auf `Product`. Per ADR-0021 leben diese Felder auf
+`ProductVariant`, da sie variantenspezifisch sind (verschiedene Verpackungsgrößen desselben
+Produkts tragen je eigene GTIN, SKU, mpn und physische Maße). `kind`, `brand`,
+`ClassificationNode`-Verknüpfung, `ServiceProfile`, `BillOfMaterials` und `ProductPassport`
+verbleiben auf `Product`. Die vollständige Schlüsselungstabelle ist in ADR-0021 dokumentiert.
+
+Die kanonischen Schlüssel `koalix.weight_kg` und `koalix.country_of_origin` (Amendment
+2026-05-05) lesen ihren Wert aus der direkten `ProductVariant`-Spalte für physische Maße; die
+Herkunftsland-Information (`country_of_origin`) verbleibt auf `Product`, sofern sie produktweit
+gilt, oder wandert auf `ProductVariant`, sofern sie variantenspezifisch ist — diese Feinheit ist
+per ADR-0021-Schlüsselungstabelle zu entscheiden; als Standardfall gilt `Product`.
 
 ---
 

@@ -210,6 +210,43 @@ Voraussetzung für das vorliegende Attributsystem.
   (Produkt-Katalog-Domänenmodell).
 - 2026-05-05: Amendment — Schichtenmodell, Adapter-Rolle von Klassifizierungsstandards und
   Lizenzbeschränkung präzisiert (siehe unten).
+- 2026-06-28: Amendment — Variantenebene in EAV-Wertetabellen (Option A) und
+  `ProductFamily` als AttributeSet-Bindungsachse per ADR-0021 eingeführt (siehe unten).
+
+---
+
+## Amendment 2026-06-28 — Variantenebene in EAV-Wertetabellen und Family als AttributeSet-Achse (ADR-0021)
+
+ADR-0021 legt die Attribut-Vererbungskaskade und die Variantengranularität fest und erweitert
+das vorliegende EAV-Modell in zwei Punkten. ADR-0021 ist die autoritative Quelle; das
+vorliegende Amendment dokumentiert die Auswirkungen auf ADR-0004.
+
+### Option A — nullable `variant_id` auf getypten Wertetabellen
+
+Jede der sechs getypten EAV-Wertetabellen (`ProductAttributeDecimal`, `ProductAttributeString`,
+`ProductAttributeEnum`, `ProductAttributeBool`, `ProductAttributeReference`,
+`ProductAttributeInt`) erhält einen nullable FK `variant_id → ProductVariant`. Der
+zusammengesetzte Index auf jeder Wertetabelle wird von `(product_id, attribute_definition_id)`
+zu `(product_id, variant_id, attribute_definition_id)` erweitert.
+
+Eine Zeile mit `variant_id IS NULL` ist der Produkt-Wert. Eine Zeile mit `variant_id = <v>`
+ist der Varianten-Override für Variante `v`. Kein separater EAV-Tabellensatz für Varianten
+entsteht; die B-Tree-Indizierungsstrategie aus dem ursprünglichen ADR bleibt vollständig
+erhalten.
+
+### `ProductFamily` als zusätzliche AttributeSet-Bindungsachse
+
+`AttributeSet` (bisher an `ClassificationNode` und/oder `kind` gebunden) akzeptiert
+`ProductFamily` als dritte Bindungsachse. Ein `AttributeSet` kann an eine `ProductFamily`,
+einen `ClassificationNode`, einen `kind`-Wert oder eine Kombination gebunden sein.
+`ProductFamily`-gebundene Sets liefern Standard-Attributwerte auf Kaskadenstufe 3 der
+Vererbungskaskade (ADR-0021: Varianten-Override → Produkt-Wert → Familie-/AttributeSet-Standard).
+
+### Kaskadenauflösung zur Lesezeit
+
+Der JSONB-Spiegel und der Serializer-Lesepfad lösen den effektiven Attributwert zur Lesezeit
+nach der in ADR-0021 definierten dreistufigen Kaskade auf. Kein materialisierter Effektivwert
+wird als eigene Zeile gespeichert.
 
 ---
 
