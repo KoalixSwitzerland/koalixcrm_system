@@ -26,69 +26,68 @@ Eine Verkaufsauftragsposition mit dem KIT-Produkt wird zur Kommissionierung frei
 
 ## Hauptablauf
 
-```plantuml
-@startuml UC-0012-Hauptablauf
-actor "Lagerarbeiter" as LA
-actor "Fertigungsplaner" as FP
-participant "Frontend\n(Next.js)" as FE
-participant "Backend\n(DRF)" as BE
-participant "Celery-Worker" as CW
-database "Datenbank" as DB
+```mermaid
+sequenceDiagram
+    actor LA as "Lagerarbeiter"
+    actor FP as "Fertigungsplaner"
+    participant FE as "Frontend<br/>(Next.js)"
+    participant BE as "Backend<br/>(DRF)"
+    participant CW as "Celery-Worker"
+    participant DB as "Datenbank"
 
-== Teil A: Kit kommissionieren (EXPLODE_ON_PICK) ==
+    Note over LA,DB: Teil A: Kit kommissionieren (EXPLODE_ON_PICK)
 
-LA -> FE : Verkaufsauftragsposition mit KIT-Produkt kommissionieren
-FE -> BE : GET /api/products/{kit_id}/bom-explosion/
-BE -> DB : SELECT BillOfMaterialsExplosion\nWHERE bom_id = <bom> AND bom_version = aktuell
-DB --> BE : Explosions-Snapshot (Komponenten-BomItem, effective_qty je Blatt)
-BE --> FE : 200 OK — abgeflachte Komponentenliste
+    LA->>FE: Verkaufsauftragsposition mit KIT-Produkt kommissionieren
+    FE->>BE: GET /api/products/{kit_id}/bom-explosion/
+    BE->>DB: SELECT BillOfMaterialsExplosion<br/>WHERE bom_id = &lt;bom&gt; AND bom_version = aktuell
+    DB-->>BE: Explosions-Snapshot (Komponenten-BomItem, effective_qty je Blatt)
+    BE-->>FE: 200 OK — abgeflachte Komponentenliste
 
-FE -> LA : Komponentenliste mit Sollmengen anzeigen\n(Menge = effective_qty × bestellte Kit-Menge)
-LA -> FE : Kommissionierung je Komponente bestätigen
+    FE->>LA: Komponentenliste mit Sollmengen anzeigen<br/>(Menge = effective_qty × bestellte Kit-Menge)
+    LA->>FE: Kommissionierung je Komponente bestätigen
 
-FE -> BE : POST /api/stock/movements/\n{event_type=OBJECT_EVENT, business_step=picking,\n[variant=<explizite_variant_id>], qty, source_location,\ndocument=Verkaufsauftrag}
-BE -> BE : Komponenten-Variante auflösen (dreistufig, ADR-0011\nAmendment 2026-07-04 OQ-0019):\n1) explizite variant im Request,\n2) BomItem.default_component_variant,\n3) einzige ProductVariant des Komponenten-Product
-BE -> BE : ATP prüfen: qty_on_hand − qty_booked −\nqty_reserved_for_document + qty_ordered ≥ angeforderte Menge?\n(für die aufgelöste ProductVariant)
-BE -> DB : UPDATE OnHandRecord\n(aufgelöste Komponenten-ProductVariant, Menge reduziert)
-BE -> DB : INSERT StockMovement (OBJECT_EVENT, picking,\nvariant=<aufgelöste_variant_id> [obligatorisch], qty,\ndocument=Verkaufsauftrag)
-DB --> BE : OK
-BE --> FE : 201 Created — Komponente kommissioniert
-FE -> LA : Kommissionierbestätigung je Komponente anzeigen
+    FE->>BE: POST /api/stock/movements/<br/>{event_type=OBJECT_EVENT, business_step=picking,<br/>[variant=&lt;explizite_variant_id&gt;], qty, source_location,<br/>document=Verkaufsauftrag}
+    BE->>BE: Komponenten-Variante auflösen (dreistufig, ADR-0011<br/>Amendment 2026-07-04 OQ-0019):<br/>1) explizite variant im Request,<br/>2) BomItem.default_component_variant,<br/>3) einzige ProductVariant des Komponenten-Product
+    BE->>BE: ATP prüfen: qty_on_hand − qty_booked −<br/>qty_reserved_for_document + qty_ordered ≥ angeforderte Menge?<br/>(für die aufgelöste ProductVariant)
+    BE->>DB: UPDATE OnHandRecord<br/>(aufgelöste Komponenten-ProductVariant, Menge reduziert)
+    BE->>DB: INSERT StockMovement (OBJECT_EVENT, picking,<br/>variant=&lt;aufgelöste_variant_id&gt; [obligatorisch], qty,<br/>document=Verkaufsauftrag)
+    DB-->>BE: OK
+    BE-->>FE: 201 Created — Komponente kommissioniert
+    FE->>LA: Kommissionierbestätigung je Komponente anzeigen
 
-== Teil B: Fertigprodukt montieren (ProductionOrder) ==
+    Note over LA,DB: Teil B: Fertigprodukt montieren (ProductionOrder)
 
-FP -> FE : ProductionOrder (status=DRAFT) freigeben
-FE -> BE : PATCH /api/production-orders/{id}/ {status=RELEASED}
-BE -> DB : SELECT BomItem für BillOfMaterials des ProductionOrder
-DB --> BE : Komponentenliste (Komponenten-Product,\ndefault_component_variant, Menge, Einheit)
-BE -> BE : Je Komponente: Komponenten-Variante auflösen\n(dreistufig wie in Teil A, ADR-0011\nAmendment 2026-07-04 OQ-0019)
-BE -> DB : INSERT ProductionOrderComponent je Komponente\n{variant=<aufgelöste_variant_id> [obligatorisch]}
-BE -> DB : INSERT StockReservation je Komponente\n{variant=<aufgelöste_variant_id> [obligatorisch],\nreservation_type=RESERVED_FOR_DOCUMENT,\ndocument=ProductionOrder, status=ACTIVE}
-DB --> BE : Reservierungs-IDs
-BE --> FE : 200 OK — Komponenten reserviert
-FE -> FP : Reservierungsbestätigung anzeigen
+    FP->>FE: ProductionOrder (status=DRAFT) freigeben
+    FE->>BE: PATCH /api/production-orders/{id}/ {status=RELEASED}
+    BE->>DB: SELECT BomItem für BillOfMaterials des ProductionOrder
+    DB-->>BE: Komponentenliste (Komponenten-Product,<br/>default_component_variant, Menge, Einheit)
+    BE->>BE: Je Komponente: Komponenten-Variante auflösen<br/>(dreistufig wie in Teil A, ADR-0011<br/>Amendment 2026-07-04 OQ-0019)
+    BE->>DB: INSERT ProductionOrderComponent je Komponente<br/>{variant=&lt;aufgelöste_variant_id&gt; [obligatorisch]}
+    BE->>DB: INSERT StockReservation je Komponente<br/>{variant=&lt;aufgelöste_variant_id&gt; [obligatorisch],<br/>reservation_type=RESERVED_FOR_DOCUMENT,<br/>document=ProductionOrder, status=ACTIVE}
+    DB-->>BE: Reservierungs-IDs
+    BE-->>FE: 200 OK — Komponenten reserviert
+    FE->>FP: Reservierungsbestätigung anzeigen
 
-FP -> FE : Physische Entnahme bestätigen
-FE -> BE : PATCH /api/production-orders/{id}/ {status=IN_PROGRESS}
-BE -> DB : INSERT StockMovement je Komponente\n(OBJECT_EVENT, business_step=picking,\nvariant=ProductionOrderComponent.variant [obligatorisch],\nqty=actual_qty)
-BE -> DB : UPDATE OnHandRecord\n(ProductionOrderComponent.variant, Menge reduziert)
-DB --> BE : OK
-BE --> FE : 200 OK — Entnahme gebucht
+    FP->>FE: Physische Entnahme bestätigen
+    FE->>BE: PATCH /api/production-orders/{id}/ {status=IN_PROGRESS}
+    BE->>DB: INSERT StockMovement je Komponente<br/>(OBJECT_EVENT, business_step=picking,<br/>variant=ProductionOrderComponent.variant [obligatorisch],<br/>qty=actual_qty)
+    BE->>DB: UPDATE OnHandRecord<br/>(ProductionOrderComponent.variant, Menge reduziert)
+    DB-->>BE: OK
+    BE-->>FE: 200 OK — Entnahme gebucht
 
-FP -> FE : Fertigungsabschluss melden\n{actual_qty, Komponenten-Ist-Mengen}
-FE -> BE : POST /api/production-orders/{id}/complete/\n{actual_qty, component_actuals[]}
-BE -> DB : INSERT StockMovement\n(TRANSFORMATION_EVENT, bündelt alle\nKomponenten-Entnahme-Events dieses Abschlusses)
-BE -> DB : INSERT/UPDATE OnHandRecord\n(Fertigprodukt-ProductVariant, Menge erhöht)
-BE -> BE : Eine aggregation_group-UUID für diesen\nFertigungsabschluss erzeugen (ADR-0011\nAmendment 2026-07-04 OQ-0020)
-BE -> DB : INSERT StockMovement (ein oder mehrere\nAGGREGATION_EVENT-Zeilen: aggregation_group=<UUID>\n[obligatorisch, alle Zeilen dieses Abschlusses];\nzusätzlich parent_serial_unit gesetzt bei\ntracking_mode=SERIAL bzw. parent_batch bei\ntracking_mode=BATCH; bei tracking_mode=NONE ist\naggregation_group alleiniger Anker;\nKind-Komponenten-Lots/Serien, As-Built-Provenienz)
-BE -> DB : UPDATE StockReservation SET status=FULFILLED\n(alle Komponentenreservierungen des ProductionOrder)
-BE -> DB : UPDATE StockBalance (Komponenten- und\nFertigprodukt-ProductVariant)
-DB --> BE : OK
-BE -> DB : UPDATE ProductionOrder SET status=COMPLETED, completed_at=now()
-DB --> BE : OK
-BE --> FE : 200 OK — ProductionOrder abgeschlossen,\nFertigprodukt-OnHandRecord aktualisiert
-FE -> FP : Abschlussbestätigung mit As-Built-Komponentenliste anzeigen
-@enduml
+    FP->>FE: Fertigungsabschluss melden<br/>{actual_qty, Komponenten-Ist-Mengen}
+    FE->>BE: POST /api/production-orders/{id}/complete/<br/>{actual_qty, component_actuals[]}
+    BE->>DB: INSERT StockMovement<br/>(TRANSFORMATION_EVENT, bündelt alle<br/>Komponenten-Entnahme-Events dieses Abschlusses)
+    BE->>DB: INSERT/UPDATE OnHandRecord<br/>(Fertigprodukt-ProductVariant, Menge erhöht)
+    BE->>BE: Eine aggregation_group-UUID für diesen<br/>Fertigungsabschluss erzeugen (ADR-0011<br/>Amendment 2026-07-04 OQ-0020)
+    BE->>DB: INSERT StockMovement (ein oder mehrere<br/>AGGREGATION_EVENT-Zeilen: aggregation_group=&lt;UUID&gt;<br/>[obligatorisch, alle Zeilen dieses Abschlusses];<br/>zusätzlich parent_serial_unit gesetzt bei<br/>tracking_mode=SERIAL bzw. parent_batch bei<br/>tracking_mode=BATCH; bei tracking_mode=NONE ist<br/>aggregation_group alleiniger Anker;<br/>Kind-Komponenten-Lots/Serien, As-Built-Provenienz)
+    BE->>DB: UPDATE StockReservation SET status=FULFILLED<br/>(alle Komponentenreservierungen des ProductionOrder)
+    BE->>DB: UPDATE StockBalance (Komponenten- und<br/>Fertigprodukt-ProductVariant)
+    DB-->>BE: OK
+    BE->>DB: UPDATE ProductionOrder SET status=COMPLETED, completed_at=now()
+    DB-->>BE: OK
+    BE-->>FE: 200 OK — ProductionOrder abgeschlossen,<br/>Fertigprodukt-OnHandRecord aktualisiert
+    FE->>FP: Abschlussbestätigung mit As-Built-Komponentenliste anzeigen
 ```
 
 ---

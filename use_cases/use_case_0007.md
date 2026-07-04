@@ -28,46 +28,45 @@ Der Projektleiter oder Vertragsverantwortliche öffnet die Angebotserstellungsma
 
 ## Hauptablauf
 
-```plantuml
-@startuml UC-0007-Hauptablauf
-actor "Projektleiter /\nVertragsverantwortlicher" as PL
-participant "Frontend\n(Next.js)" as FE
-participant "Backend\n(DRF)" as BE
-database "Datenbank" as DB
+```mermaid
+sequenceDiagram
+    actor PL as "Projektleiter /<br/>Vertragsverantwortlicher"
+    participant FE as "Frontend<br/>(Next.js)"
+    participant BE as "Backend<br/>(DRF)"
+    participant DB as "Datenbank"
 
-PL -> FE : Neues Angebot öffnen, Mietprodukt (Variante) auswählen
-FE -> BE : GET /api/variants/{id}/serial-units/availability/\n?start=<ISO8601>&end=<ISO8601>
-BE -> DB : Alle SerialUnits für Variante abrufen;\nRentalAssignment + StockReservation\nfür Zeitraum [start, end] auswerten
-DB --> BE : Verfügbarkeitsliste pro SerialUnit\n(frei / belegt + Rückgabedatum)
-BE --> FE : 200 OK — Verfügbarkeitskalender (SerialUnit-Ebene)
+    PL->>FE: Neues Angebot öffnen, Mietprodukt (Variante) auswählen
+    FE->>BE: GET /api/variants/{id}/serial-units/availability/<br/>?start=&lt;ISO8601&gt;&end=&lt;ISO8601&gt;
+    BE->>DB: Alle SerialUnits für Variante abrufen;<br/>RentalAssignment + StockReservation<br/>für Zeitraum [start, end] auswerten
+    DB-->>BE: Verfügbarkeitsliste pro SerialUnit<br/>(frei / belegt + Rückgabedatum)
+    BE-->>FE: 200 OK — Verfügbarkeitskalender (SerialUnit-Ebene)
 
-FE -> PL : Verfügbarkeitskalender anzeigen:\nfrei / belegt je SerialUnit + Rückgabedatum\ndes Vormieters (wenn belegt)
-PL -> FE : Mietstart, Mietende, Wunsch-SerialUnit\n(oder „automatisch") eingeben
+    FE->>PL: Verfügbarkeitskalender anzeigen:<br/>frei / belegt je SerialUnit + Rückgabedatum<br/>des Vormieters (wenn belegt)
+    PL->>FE: Mietstart, Mietende, Wunsch-SerialUnit<br/>(oder „automatisch") eingeben
 
-FE -> BE : POST /api/quotations/{id}/positions/\n{variant, serial_unit?, rental_start, rental_end,\nqty=1, uom, price}
-BE -> BE : Überschneidungsprüfung:\n∃ aktive StockReservation oder RentalAssignment\nfür dieselbe SerialUnit ∩ [rental_start, rental_end]?
+    FE->>BE: POST /api/quotations/{id}/positions/<br/>{variant, serial_unit?, rental_start, rental_end,<br/>qty=1, uom, price}
+    BE->>BE: Überschneidungsprüfung:<br/>∃ aktive StockReservation oder RentalAssignment<br/>für dieselbe SerialUnit ∩ [rental_start, rental_end]?
 
-alt Keine Überschneidung, SerialUnit angegeben
-    BE -> DB : INSERT StockReservation\n{variant, serial_unit, rental_start, rental_end,\nreservation_type=RESERVED_FOR_DOCUMENT,\ndocument=Angebot, status=ACTIVE}
-    DB --> BE : Reservierungs-ID
-    BE -> DB : INSERT StockMovement\n{event_type=OBJECT_EVENT,\nbusiness_step=rental_out (geplant / soft),\nserial_unit, qty=null (Lifecycle-Event),\ndocument=Angebot, occurred_at=rental_start}
-    DB --> BE : OK
-    BE --> FE : 201 Created — Position mit Reservierungs-ID
-else Keine Überschneidung, SerialUnit = „automatisch"
-    BE -> DB : Früheste freie SerialUnit für [rental_start, rental_end] abfragen\n(condition_state ∈ {NEW, USED}, kein aktives Assignment)
-    DB --> BE : SerialUnit mit frühestem Verfügbarkeitsbeginn
-    BE -> DB : INSERT StockReservation (wie oben, auto-zugewiesene SerialUnit)
-    BE -> DB : INSERT StockMovement (wie oben)
-    DB --> BE : OK
-    BE --> FE : 201 Created — Position mit zugewiesener SerialUnit + Reservierungs-ID
-end
+    alt Keine Überschneidung, SerialUnit angegeben
+        BE->>DB: INSERT StockReservation<br/>{variant, serial_unit, rental_start, rental_end,<br/>reservation_type=RESERVED_FOR_DOCUMENT,<br/>document=Angebot, status=ACTIVE}
+        DB-->>BE: Reservierungs-ID
+        BE->>DB: INSERT StockMovement<br/>{event_type=OBJECT_EVENT,<br/>business_step=rental_out (geplant / soft),<br/>serial_unit, qty=null (Lifecycle-Event),<br/>document=Angebot, occurred_at=rental_start}
+        DB-->>BE: OK
+        BE-->>FE: 201 Created — Position mit Reservierungs-ID
+    else Keine Überschneidung, SerialUnit = „automatisch"
+        BE->>DB: Früheste freie SerialUnit für [rental_start, rental_end] abfragen<br/>(condition_state ∈ {NEW, USED}, kein aktives Assignment)
+        DB-->>BE: SerialUnit mit frühestem Verfügbarkeitsbeginn
+        BE->>DB: INSERT StockReservation (wie oben, auto-zugewiesene SerialUnit)
+        BE->>DB: INSERT StockMovement (wie oben)
+        DB-->>BE: OK
+        BE-->>FE: 201 Created — Position mit zugewiesener SerialUnit + Reservierungs-ID
+    end
 
-FE -> PL : Angebotsposition mit Mietfenster,\nSerialUnit und Reservierungsbestätigung anzeigen
-PL -> FE : Angebot speichern / abschicken
-FE -> BE : PATCH /api/quotations/{id}/ {status=SENT}
-BE --> FE : 200 OK
-FE -> PL : Angebot als „Versendet" bestätigen
-@enduml
+    FE->>PL: Angebotsposition mit Mietfenster,<br/>SerialUnit und Reservierungsbestätigung anzeigen
+    PL->>FE: Angebot speichern / abschicken
+    FE->>BE: PATCH /api/quotations/{id}/ {status=SENT}
+    BE-->>FE: 200 OK
+    FE->>PL: Angebot als „Versendet" bestätigen
 ```
 
 ---

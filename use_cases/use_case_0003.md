@@ -19,30 +19,29 @@ Der Produktmanager öffnet die Produktdetailseite und navigiert zum Übersetzung
 
 ## Hauptablauf
 
-```plantuml
-@startuml UC-0003-Hauptablauf
-actor "Produktmanager" as PM
-participant "Frontend\n(Next.js)" as FE
-participant "Backend\n(DRF)" as BE
-database "Datenbank" as DB
+```mermaid
+sequenceDiagram
+    actor PM as "Produktmanager"
+    participant FE as "Frontend<br/>(Next.js)"
+    participant BE as "Backend<br/>(DRF)"
+    participant DB as "Datenbank"
 
-PM -> FE : Übersetzungsbereich öffnen
-FE -> BE : GET /api/products/{id}/translations/
-BE -> DB : SELECT ProductTranslation\n(workspace-gefiltert, product_id)
-DB --> BE : bestehende Übersetzungen (alle Sprachen)
-BE --> FE : 200 OK — Liste der Übersetzungen
+    PM->>FE: Übersetzungsbereich öffnen
+    FE->>BE: GET /api/products/{id}/translations/
+    BE->>DB: SELECT ProductTranslation<br/>(workspace-gefiltert, product_id)
+    DB-->>BE: bestehende Übersetzungen (alle Sprachen)
+    BE-->>FE: 200 OK — Liste der Übersetzungen
 
-FE -> PM : Übersetzungstabelle anzeigen\n(eine Zeile pro Sprache)
+    FE->>PM: Übersetzungstabelle anzeigen<br/>(eine Zeile pro Sprache)
 
-PM -> FE : Sprache wählen, name / short_description /\nlong_description eingeben
-FE -> BE : POST /api/products/{id}/translations/\n{language_code, name, short_description, long_description}
-BE -> BE : BCP-47-Format prüfen
-BE -> DB : INSERT ProductTranslation
-DB --> BE : OK
-BE --> FE : 201 Created — neue Übersetzung
+    PM->>FE: Sprache wählen, name / short_description /<br/>long_description eingeben
+    FE->>BE: POST /api/products/{id}/translations/<br/>{language_code, name, short_description, long_description}
+    BE->>BE: BCP-47-Format prüfen
+    BE->>DB: INSERT ProductTranslation
+    DB-->>BE: OK
+    BE-->>FE: 201 Created — neue Übersetzung
 
-FE -> PM : Neue Übersetzungszeile in Tabelle anzeigen
-@enduml
+    FE->>PM: Neue Übersetzungszeile in Tabelle anzeigen
 ```
 
 ## Alternativablauf A: Übersetzung bearbeiten

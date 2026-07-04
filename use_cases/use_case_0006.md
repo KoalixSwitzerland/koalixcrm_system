@@ -20,38 +20,37 @@ Der Produktmanager öffnet die Produktdetailseite eines SERVICE-Produkts. Das Fr
 
 ## Hauptablauf
 
-```plantuml
-@startuml UC-0006-Hauptablauf
-actor "Produktmanager" as PM
-participant "Frontend\n(Next.js)" as FE
-participant "Backend\n(DRF)" as BE
-database "Datenbank" as DB
+```mermaid
+sequenceDiagram
+    actor PM as "Produktmanager"
+    participant FE as "Frontend<br/>(Next.js)"
+    participant BE as "Backend<br/>(DRF)"
+    participant DB as "Datenbank"
 
-PM -> FE : Produktdetailseite eines SERVICE-Produkts öffnen
-FE -> BE : GET /api/products/{id}/service-profile/
-BE -> DB : SELECT ServiceProfile WHERE product_id = {id}
-DB --> BE : ServiceProfile (oder 404)
-BE --> FE : 200 OK (oder 404)
+    PM->>FE: Produktdetailseite eines SERVICE-Produkts öffnen
+    FE->>BE: GET /api/products/{id}/service-profile/
+    BE->>DB: SELECT ServiceProfile WHERE product_id = {id}
+    DB-->>BE: ServiceProfile (oder 404)
+    BE-->>FE: 200 OK (oder 404)
 
-alt ServiceProfile existiert nicht
-    FE -> PM : „Dienstleistungsprofil anlegen"-Schaltfläche anzeigen
-    PM -> FE : Abrechnungsmodell, Standarddauer,\nLeistungsbeschreibung, SLA-Referenz eingeben
-    FE -> BE : POST /api/products/{id}/service-profile/\n{billing_model, default_duration?,\ndeliverable, sla_reference?}
-    BE -> BE : kind = SERVICE prüfen
-    BE -> DB : INSERT ServiceProfile (workspace-scoped)
-    DB --> BE : ServiceProfile-ID
-    BE --> FE : 201 Created — ServiceProfile
-else ServiceProfile existiert
-    FE -> PM : Bestehendes Dienstleistungsprofil anzeigen
-    PM -> FE : Felder bearbeiten
-    FE -> BE : PATCH /api/products/{id}/service-profile/\n{geänderte Felder}
-    BE -> DB : UPDATE ServiceProfile
-    DB --> BE : OK
-    BE --> FE : 200 OK — aktualisiertes ServiceProfile
-end
+    alt ServiceProfile existiert nicht
+        FE->>PM: „Dienstleistungsprofil anlegen"-Schaltfläche anzeigen
+        PM->>FE: Abrechnungsmodell, Standarddauer,<br/>Leistungsbeschreibung, SLA-Referenz eingeben
+        FE->>BE: POST /api/products/{id}/service-profile/<br/>{billing_model, default_duration?,<br/>deliverable, sla_reference?}
+        BE->>BE: kind = SERVICE prüfen
+        BE->>DB: INSERT ServiceProfile (workspace-scoped)
+        DB-->>BE: ServiceProfile-ID
+        BE-->>FE: 201 Created — ServiceProfile
+    else ServiceProfile existiert
+        FE->>PM: Bestehendes Dienstleistungsprofil anzeigen
+        PM->>FE: Felder bearbeiten
+        FE->>BE: PATCH /api/products/{id}/service-profile/<br/>{geänderte Felder}
+        BE->>DB: UPDATE ServiceProfile
+        DB-->>BE: OK
+        BE-->>FE: 200 OK — aktualisiertes ServiceProfile
+    end
 
-FE -> PM : Aktualisiertes Dienstleistungsprofil anzeigen
-@enduml
+    FE->>PM: Aktualisiertes Dienstleistungsprofil anzeigen
 ```
 
 ## Alternativablauf A: Falscher kind-Wert

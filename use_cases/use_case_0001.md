@@ -20,32 +20,31 @@ Der Produktmanager navigiert zur Produktlistenseite und klickt auf „Neues Prod
 
 ## Hauptablauf
 
-```plantuml
-@startuml UC-0001-Hauptablauf
-actor "Produktmanager" as PM
-participant "Frontend\n(Next.js)" as FE
-participant "Backend\n(DRF)" as BE
-database "Datenbank" as DB
+```mermaid
+sequenceDiagram
+    actor PM as "Produktmanager"
+    participant FE as "Frontend<br/>(Next.js)"
+    participant BE as "Backend<br/>(DRF)"
+    participant DB as "Datenbank"
 
-PM -> FE : Klick auf „Neues Produkt anlegen"
-FE -> BE : GET /api/classifications/ (verfügbare Schemata)
-BE -> DB : SELECT Classification, ClassificationNode\n(workspace-gefiltert + global)
-DB --> BE : Klassifizierungsbaum
-BE --> FE : 200 OK — Klassifizierungsdaten
+    PM->>FE: Klick auf „Neues Produkt anlegen"
+    FE->>BE: GET /api/classifications/ (verfügbare Schemata)
+    BE->>DB: SELECT Classification, ClassificationNode<br/>(workspace-gefiltert + global)
+    DB-->>BE: Klassifizierungsbaum
+    BE-->>FE: 200 OK — Klassifizierungsdaten
 
-FE -> PM : Produktformular anzeigen
-PM -> FE : SKU, kind, lifecycle_status, base_uom,\ntax_class, brand eingeben
-PM -> FE : ClassificationNode auswählen
+    FE->>PM: Produktformular anzeigen
+    PM->>FE: SKU, kind, lifecycle_status, base_uom,<br/>tax_class, brand eingeben
+    PM->>FE: ClassificationNode auswählen
 
-FE -> BE : POST /api/products/ {sku, kind, lifecycle_status, …}
-BE -> DB : INSERT Product (workspace-scoped)
-DB --> BE : Product-ID
-BE -> DB : INSERT ProductClassification\n(product_id, classification_node_id)
-DB --> BE : OK
-BE --> FE : 201 Created — Product-Objekt
+    FE->>BE: POST /api/products/ {sku, kind, lifecycle_status, …}
+    BE->>DB: INSERT Product (workspace-scoped)
+    DB-->>BE: Product-ID
+    BE->>DB: INSERT ProductClassification<br/>(product_id, classification_node_id)
+    DB-->>BE: OK
+    BE-->>FE: 201 Created — Product-Objekt
 
-FE -> PM : Produktdetailseite anzeigen
-@enduml
+    FE->>PM: Produktdetailseite anzeigen
 ```
 
 ## Alternativablauf A: Doppelte SKU

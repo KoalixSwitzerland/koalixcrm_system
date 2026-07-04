@@ -27,22 +27,21 @@ Der Lagermitarbeiter benötigt eine Komponente und sucht ihren Lagerort im Syste
 
 ## Hauptablauf
 
-```plantuml
-@startuml UC-0008-Hauptablauf
-actor "Lagermitarbeiter" as LM
-participant "Frontend\n(Next.js)" as FE
-participant "Backend\n(DRF)" as BE
-database "Datenbank" as DB
+```mermaid
+sequenceDiagram
+    actor LM as "Lagermitarbeiter"
+    participant FE as "Frontend<br/>(Next.js)"
+    participant BE as "Backend<br/>(DRF)"
+    participant DB as "Datenbank"
 
-LM -> FE : Suchbegriff (Name oder kind) eingeben;\noptional: Workspace-Filter,\nVerfügbarkeitsfilter, Chargenfilter setzen
-FE -> BE : GET /api/stock/components/search/\n?q=<Begriff>&kind=<Wert>&include_zero_qty=<bool>\n&batch=<id>
-BE -> DB : Product-Suche nach name/translation und kind;\nJoin auf ProductVariant + OnHandRecord + Batch\n(wenn Filter) (Workspace-Scope via\nWorkspaceScopedViewSetMixin, ADR-0001)
-DB --> BE : ProductVariant-Treffer je Product mit\nqty_on_hand-Summe und Location-FK je OnHandRecord-Zeile\n(ADR-0021: OnHandRecord FK → ProductVariant)
-BE -> DB : Für jeden Treffer: vollständigen Standortpfad\nnach oben traversieren (rekursiver CTE\nbis zum Root-Knoten; ADR-0009)
-DB --> BE : Pfadliste je OnHandRecord:\nRegel → Fach → Ebene → Position (Breadcrumb-Sequenz)
-BE --> FE : 200 OK — Trefferliste:\nProdukt-ID, Name, kind,\nje Treffer: ProductVariant-ID + sku,\nje Standort: qty_on_hand + Breadcrumb-Array\n[{type: RACK, name: "R03"},\n{type: SHELF, name: "S02"},\n…, {type: BIN, name: "B04"}]\nStandorte sortiert nach qty_on_hand absteigend
-FE -> LM : Trefferliste mit Variantenkennung und Breadcrumbs anzeigen
-@enduml
+    LM->>FE: Suchbegriff (Name oder kind) eingeben;<br/>optional: Workspace-Filter,<br/>Verfügbarkeitsfilter, Chargenfilter setzen
+    FE->>BE: GET /api/stock/components/search/<br/>?q=&lt;Begriff&gt;&kind=&lt;Wert&gt;&include_zero_qty=&lt;bool&gt;<br/>&batch=&lt;id&gt;
+    BE->>DB: Product-Suche nach name/translation und kind;<br/>Join auf ProductVariant + OnHandRecord + Batch<br/>(wenn Filter) (Workspace-Scope via<br/>WorkspaceScopedViewSetMixin, ADR-0001)
+    DB-->>BE: ProductVariant-Treffer je Product mit<br/>qty_on_hand-Summe und Location-FK je OnHandRecord-Zeile<br/>(ADR-0021: OnHandRecord FK → ProductVariant)
+    BE->>DB: Für jeden Treffer: vollständigen Standortpfad<br/>nach oben traversieren (rekursiver CTE<br/>bis zum Root-Knoten; ADR-0009)
+    DB-->>BE: Pfadliste je OnHandRecord:<br/>Regel → Fach → Ebene → Position (Breadcrumb-Sequenz)
+    BE-->>FE: 200 OK — Trefferliste:<br/>Produkt-ID, Name, kind,<br/>je Treffer: ProductVariant-ID + sku,<br/>je Standort: qty_on_hand + Breadcrumb-Array<br/>[{type: RACK, name: "R03"},<br/>{type: SHELF, name: "S02"},<br/>…, {type: BIN, name: "B04"}]<br/>Standorte sortiert nach qty_on_hand absteigend
+    FE->>LM: Trefferliste mit Variantenkennung und Breadcrumbs anzeigen
 ```
 
 ---

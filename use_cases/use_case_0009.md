@@ -27,41 +27,40 @@ Der Lagermitarbeiter entnimmt eine Komponente aus dem Lager und möchte die Entn
 
 ## Hauptablauf
 
-```plantuml
-@startuml UC-0009-Hauptablauf
-actor "Lagermitarbeiter" as LM
-participant "Frontend\n(Next.js)" as FE
-participant "Backend\n(DRF)" as BE
-database "Datenbank" as DB
+```mermaid
+sequenceDiagram
+    actor LM as "Lagermitarbeiter"
+    participant FE as "Frontend<br/>(Next.js)"
+    participant BE as "Backend<br/>(DRF)"
+    participant DB as "Datenbank"
 
-LM -> FE : Produkt-Barcode (GTIN) ODER\nStellplatz-Barcode (Location.external_ref) scannen
-FE -> BE : POST /api/stock/scan/\n{identifier: "<gescannter Wert>", identifier_type: "AUTO"}
-BE -> BE : Identifier-Auflösung:\nGTIN → ProductVariant.gtin (ADR-0021);\nexternal_ref → Location.external_ref (ADR-0009);\nglobal_uid → SerialUnit.global_uid (ADR-0012)
-BE -> DB : Passenden OnHandRecord(s)\nfür aufgelöste ProductVariant + Workspace abfragen
-DB --> BE : ProductVariant + Location + qty_on_hand (je OnHandRecord-Zeile)
-BE --> FE : 200 OK — aufgelöster Identifier-Typ,\nProduktvariante, Stellplatz, aktuelle qty_on_hand
-FE -> LM : Produktvariante und Stellplatz anzeigen;\nEingabefeld für entnommene Menge einblenden
-LM -> FE : Entnommene Menge eingeben
-FE -> BE : POST /api/stock/movements/\n{event_type: OBJECT_EVENT,\nbusiness_step: picking,\nproduct_variant: <id>, source_location: <location_id>,\nqty: <entnommen>, uom: <id>,\nidempotency_key: <UUID>}
-BE -> DB : INSERT StockMovement\n{business_step=picking, qty=<entnommen>,\nproduct_variant=<id>, source_location=<Stellplatz>,\noccurred_at=jetzt, disposition=null};\nsynchrones UPDATE StockBalance\n(qty_on_hand -= <entnommen>; ADR-0011)
-DB --> BE : StockMovement-ID, neue qty_on_hand
-BE --> FE : 201 Created — Picking-Event gespeichert;\nneue qty_on_hand am Stellplatz
-FE -> LM : Bestätigung der Entnahme;\nEingabefeld für Restmenge am Stellplatz anzeigen
-LM -> FE : Tatsächliche Restmenge am Stellplatz eingeben
-FE -> BE : POST /api/stock/cycle-count/\n{location: <id>, product_variant: <id>,\nconfirmed_qty: <Restmenge>,\nidempotency_key: <UUID>}
-BE -> DB : qty_on_hand nach Picking-Event lesen\n(erwartete Restmenge = qty_on_hand_nach_picking)
-DB --> BE : Erwartete Restmenge
+    LM->>FE: Produkt-Barcode (GTIN) ODER<br/>Stellplatz-Barcode (Location.external_ref) scannen
+    FE->>BE: POST /api/stock/scan/<br/>{identifier: "&lt;gescannter Wert&gt;", identifier_type: "AUTO"}
+    BE->>BE: Identifier-Auflösung:<br/>GTIN → ProductVariant.gtin (ADR-0021);<br/>external_ref → Location.external_ref (ADR-0009);<br/>global_uid → SerialUnit.global_uid (ADR-0012)
+    BE->>DB: Passenden OnHandRecord(s)<br/>für aufgelöste ProductVariant + Workspace abfragen
+    DB-->>BE: ProductVariant + Location + qty_on_hand (je OnHandRecord-Zeile)
+    BE-->>FE: 200 OK — aufgelöster Identifier-Typ,<br/>Produktvariante, Stellplatz, aktuelle qty_on_hand
+    FE->>LM: Produktvariante und Stellplatz anzeigen;<br/>Eingabefeld für entnommene Menge einblenden
+    LM->>FE: Entnommene Menge eingeben
+    FE->>BE: POST /api/stock/movements/<br/>{event_type: OBJECT_EVENT,<br/>business_step: picking,<br/>product_variant: &lt;id&gt;, source_location: &lt;location_id&gt;,<br/>qty: &lt;entnommen&gt;, uom: &lt;id&gt;,<br/>idempotency_key: &lt;UUID&gt;}
+    BE->>DB: INSERT StockMovement<br/>{business_step=picking, qty=&lt;entnommen&gt;,<br/>product_variant=&lt;id&gt;, source_location=&lt;Stellplatz&gt;,<br/>occurred_at=jetzt, disposition=null};<br/>synchrones UPDATE StockBalance<br/>(qty_on_hand -= &lt;entnommen&gt;; ADR-0011)
+    DB-->>BE: StockMovement-ID, neue qty_on_hand
+    BE-->>FE: 201 Created — Picking-Event gespeichert;<br/>neue qty_on_hand am Stellplatz
+    FE->>LM: Bestätigung der Entnahme;<br/>Eingabefeld für Restmenge am Stellplatz anzeigen
+    LM->>FE: Tatsächliche Restmenge am Stellplatz eingeben
+    FE->>BE: POST /api/stock/cycle-count/<br/>{location: &lt;id&gt;, product_variant: &lt;id&gt;,<br/>confirmed_qty: &lt;Restmenge&gt;,<br/>idempotency_key: &lt;UUID&gt;}
+    BE->>DB: qty_on_hand nach Picking-Event lesen<br/>(erwartete Restmenge = qty_on_hand_nach_picking)
+    DB-->>BE: Erwartete Restmenge
 
-alt Restmenge stimmt überein (confirmed_qty == erwartete_Restmenge)
-    BE --> FE : 200 OK — keine Korrektur erforderlich;\nAudit-Trail vollständig (1 StockMovement)
-    FE -> LM : Bestandsbestätigung: kein Unterschied
-else Restmenge weicht ab (confirmed_qty ≠ erwartete_Restmenge)
-    BE -> DB : INSERT StockMovement\n{business_step=inventorying,\nreason_code=cycle_count_discrepancy,\nqty=<delta: confirmed_qty - erwartete_Restmenge>,\nproduct_variant=<id>, source_location=<Stellplatz>,\noccurred_at=jetzt, disposition=null};\nsynchrones UPDATE StockBalance (ADR-0011)
-    DB --> BE : Korrektur-StockMovement-ID
-    BE --> FE : 201 Created — Zykluszählung mit\nKorrekturbuchung gespeichert;\n2 StockMovement-Zeilen im Audit-Trail
-    FE -> LM : Bestandsbestätigung: Abweichung\nbegründet und korrigiert anzeigen
-end
-@enduml
+    alt Restmenge stimmt überein (confirmed_qty == erwartete_Restmenge)
+        BE-->>FE: 200 OK — keine Korrektur erforderlich;<br/>Audit-Trail vollständig (1 StockMovement)
+        FE->>LM: Bestandsbestätigung: kein Unterschied
+    else Restmenge weicht ab (confirmed_qty ≠ erwartete_Restmenge)
+        BE->>DB: INSERT StockMovement<br/>{business_step=inventorying,<br/>reason_code=cycle_count_discrepancy,<br/>qty=&lt;delta: confirmed_qty - erwartete_Restmenge&gt;,<br/>product_variant=&lt;id&gt;, source_location=&lt;Stellplatz&gt;,<br/>occurred_at=jetzt, disposition=null};<br/>synchrones UPDATE StockBalance (ADR-0011)
+        DB-->>BE: Korrektur-StockMovement-ID
+        BE-->>FE: 201 Created — Zykluszählung mit<br/>Korrekturbuchung gespeichert;<br/>2 StockMovement-Zeilen im Audit-Trail
+        FE->>LM: Bestandsbestätigung: Abweichung<br/>begründet und korrigiert anzeigen
+    end
 ```
 
 ---

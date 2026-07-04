@@ -25,79 +25,78 @@ Der Produktmanager navigiert zur Produktlistenseite und klickt auf „Neue Produ
 
 ## Hauptablauf
 
-```plantuml
-@startuml UC-0011-Hauptablauf
-actor "Produktmanager" as PM
-participant "Frontend\n(Next.js)" as FE
-participant "Backend\n(DRF)" as BE
-database "Datenbank" as DB
+```mermaid
+sequenceDiagram
+    actor PM as "Produktmanager"
+    participant FE as "Frontend<br/>(Next.js)"
+    participant BE as "Backend<br/>(DRF)"
+    participant DB as "Datenbank"
 
-PM -> FE : Klick auf „Neue Produktfamilie anlegen"
-FE -> BE : POST /api/product-families/ {name}
-BE -> DB : INSERT ProductFamily (workspace-scoped)
-DB --> BE : ProductFamily-ID
-BE --> FE : 201 Created — ProductFamily
+    PM->>FE: Klick auf „Neue Produktfamilie anlegen"
+    FE->>BE: POST /api/product-families/ {name}
+    BE->>DB: INSERT ProductFamily (workspace-scoped)
+    DB-->>BE: ProductFamily-ID
+    BE-->>FE: 201 Created — ProductFamily
 
-FE -> PM : Formular „Produkt anlegen" innerhalb der Familie anzeigen
-PM -> FE : sku, kind=TRADING_GOOD, ClassificationNode,\nbase_uom, tax_class, brand eingeben
-FE -> BE : POST /api/products/\n{product_family_id, sku, kind=TRADING_GOOD, …}
-BE -> DB : INSERT Product\n(FK auf ProductFamily; ADR-0021: „ProductVariant trägt\neinen FK auf Product (nicht auf ProductFamily)")
-DB --> BE : Product-ID
-BE -> DB : INSERT ProductClassification (product_id, classification_node_id)
-DB --> BE : OK
-BE --> FE : 201 Created — Product-Objekt
+    FE->>PM: Formular „Produkt anlegen" innerhalb der Familie anzeigen
+    PM->>FE: sku, kind=TRADING_GOOD, ClassificationNode,<br/>base_uom, tax_class, brand eingeben
+    FE->>BE: POST /api/products/<br/>{product_family_id, sku, kind=TRADING_GOOD, …}
+    BE->>DB: INSERT Product<br/>(FK auf ProductFamily; ADR-0021: „ProductVariant trägt<br/>einen FK auf Product (nicht auf ProductFamily)")
+    DB-->>BE: Product-ID
+    BE->>DB: INSERT ProductClassification (product_id, classification_node_id)
+    DB-->>BE: OK
+    BE-->>FE: 201 Created — Product-Objekt
 
-FE -> BE : GET /api/products/{id}/attribute-set/
-BE -> DB : SELECT AttributeSet, AttributeDefinition\nfür ClassificationNode, kind und ProductFamily\n(ADR-0021: Family als zusätzliche Bindungsachse)
-DB --> BE : Feldliste
-BE --> FE : 200 OK — AttributeSet-Metadaten
+    FE->>BE: GET /api/products/{id}/attribute-set/
+    BE->>DB: SELECT AttributeSet, AttributeDefinition<br/>für ClassificationNode, kind und ProductFamily<br/>(ADR-0021: Family als zusätzliche Bindungsachse)
+    DB-->>BE: Feldliste
+    BE-->>FE: 200 OK — AttributeSet-Metadaten
 
-FE -> PM : Attributformular auf Produktebene anzeigen
-PM -> FE : Attributwert setzen (z. B. Material = "Baumwolle")
-FE -> BE : PATCH /api/products/{id}/attribute-values/\n{attribute_definition_id, value}
-BE -> DB : UPSERT ProductAttributeString\n(product_id, variant_id = NULL, value)
-DB --> BE : OK
-BE --> FE : 200 OK — Produkt-Attributwert gesetzt
+    FE->>PM: Attributformular auf Produktebene anzeigen
+    PM->>FE: Attributwert setzen (z. B. Material = "Baumwolle")
+    FE->>BE: PATCH /api/products/{id}/attribute-values/<br/>{attribute_definition_id, value}
+    BE->>DB: UPSERT ProductAttributeString<br/>(product_id, variant_id = NULL, value)
+    DB-->>BE: OK
+    BE-->>FE: 200 OK — Produkt-Attributwert gesetzt
 
-PM -> FE : Erste ProductVariant anlegen\n{sku, gtin}
-FE -> BE : POST /api/products/{id}/variants/ {sku, gtin}
-BE -> BE : (workspace, sku)-Eindeutigkeit prüfen
-BE -> DB : INSERT ProductVariant (FK auf Product)
-DB --> BE : Variant-ID (V1)
-BE --> FE : 201 Created — ProductVariant V1
+    PM->>FE: Erste ProductVariant anlegen<br/>{sku, gtin}
+    FE->>BE: POST /api/products/{id}/variants/ {sku, gtin}
+    BE->>BE: (workspace, sku)-Eindeutigkeit prüfen
+    BE->>DB: INSERT ProductVariant (FK auf Product)
+    DB-->>BE: Variant-ID (V1)
+    BE-->>FE: 201 Created — ProductVariant V1
 
-PM -> FE : Zweite ProductVariant anlegen\n{sku, gtin}
-FE -> BE : POST /api/products/{id}/variants/ {sku, gtin}
-BE -> BE : (workspace, sku)-Eindeutigkeit prüfen
-BE -> DB : INSERT ProductVariant (FK auf Product)
-DB --> BE : Variant-ID (V2)
-BE --> FE : 201 Created — ProductVariant V2
+    PM->>FE: Zweite ProductVariant anlegen<br/>{sku, gtin}
+    FE->>BE: POST /api/products/{id}/variants/ {sku, gtin}
+    BE->>BE: (workspace, sku)-Eindeutigkeit prüfen
+    BE->>DB: INSERT ProductVariant (FK auf Product)
+    DB-->>BE: Variant-ID (V2)
+    BE-->>FE: 201 Created — ProductVariant V2
 
-PM -> FE : Attributwert auf V1 überschreiben\n(z. B. Material = "Bio-Baumwolle")
-FE -> BE : PATCH /api/variants/{V1}/attribute-values/\n{attribute_definition_id, value}
-BE -> DB : UPSERT ProductAttributeString\n(product_id, variant_id = V1, value)\n(ADR-0021 Option A: nullable variant_id\nauf getypten EAV-Wertetabellen)
-DB --> BE : OK
-BE --> FE : 200 OK — Varianten-Override gesetzt
+    PM->>FE: Attributwert auf V1 überschreiben<br/>(z. B. Material = "Bio-Baumwolle")
+    FE->>BE: PATCH /api/variants/{V1}/attribute-values/<br/>{attribute_definition_id, value}
+    BE->>DB: UPSERT ProductAttributeString<br/>(product_id, variant_id = V1, value)<br/>(ADR-0021 Option A: nullable variant_id<br/>auf getypten EAV-Wertetabellen)
+    DB-->>BE: OK
+    BE-->>FE: 200 OK — Varianten-Override gesetzt
 
-PM -> FE : Preis je Variante eingeben (V1, V2)
-FE -> BE : POST /api/product-prices/\n{variant_id, amount, currency, valid_from}
-BE -> DB : INSERT ProductPrice\n(FK auf ProductVariant; ADR-0005 Amendment 2026-06-28:\n„ProductPrice trägt einen FK auf ProductVariant\n(nicht auf Product)")
-DB --> BE : OK
-BE --> FE : 201 Created — ProductPrice
+    PM->>FE: Preis je Variante eingeben (V1, V2)
+    FE->>BE: POST /api/product-prices/<br/>{variant_id, amount, currency, valid_from}
+    BE->>DB: INSERT ProductPrice<br/>(FK auf ProductVariant; ADR-0005 Amendment 2026-06-28:<br/>„ProductPrice trägt einen FK auf ProductVariant<br/>(nicht auf Product)")
+    DB-->>BE: OK
+    BE-->>FE: 201 Created — ProductPrice
 
-FE -> BE : GET /api/variants/{V1}/effective-attributes/
-BE -> DB : SELECT ProductAttributeString\nWHERE variant_id = V1 (Override gefunden)
-DB --> BE : Wert = "Bio-Baumwolle" (Kaskadenstufe 1)
-BE --> FE : 200 OK — Effektivwert je Attribut, Herkunftsstufe markiert
+    FE->>BE: GET /api/variants/{V1}/effective-attributes/
+    BE->>DB: SELECT ProductAttributeString<br/>WHERE variant_id = V1 (Override gefunden)
+    DB-->>BE: Wert = "Bio-Baumwolle" (Kaskadenstufe 1)
+    BE-->>FE: 200 OK — Effektivwert je Attribut, Herkunftsstufe markiert
 
-FE -> BE : GET /api/variants/{V2}/effective-attributes/
-BE -> DB : SELECT ProductAttributeString\nWHERE variant_id = V2 (keine Zeile → INHERIT)
-BE -> DB : SELECT ProductAttributeString\nWHERE variant_id IS NULL, product_id = Product (Produkt-Wert gefunden)
-DB --> BE : Wert = "Baumwolle" (Kaskadenstufe 2)
-BE --> FE : 200 OK — Effektivwert je Attribut, Herkunftsstufe markiert
+    FE->>BE: GET /api/variants/{V2}/effective-attributes/
+    BE->>DB: SELECT ProductAttributeString<br/>WHERE variant_id = V2 (keine Zeile → INHERIT)
+    BE->>DB: SELECT ProductAttributeString<br/>WHERE variant_id IS NULL, product_id = Product (Produkt-Wert gefunden)
+    DB-->>BE: Wert = "Baumwolle" (Kaskadenstufe 2)
+    BE-->>FE: 200 OK — Effektivwert je Attribut, Herkunftsstufe markiert
 
-FE -> PM : Produktdetailseite mit beiden Varianten,\nje eigenem Preis und aufgelösten Attributwerten anzeigen
-@enduml
+    FE->>PM: Produktdetailseite mit beiden Varianten,<br/>je eigenem Preis und aufgelösten Attributwerten anzeigen
 ```
 
 ---
