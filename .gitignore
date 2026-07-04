@@ -21,3 +21,6 @@ secrets.env.local
 .idea/
 .vscode/
 *.swp
+
+# mkdocs build output
+site/
