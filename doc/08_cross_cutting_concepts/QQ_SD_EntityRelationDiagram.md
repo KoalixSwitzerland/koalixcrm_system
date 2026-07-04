@@ -2,7 +2,7 @@
 
 ## Overview
 
-koalixcrm uses a single **PostgreSQL** relational database shared by all eight Django apps. The
+koalixcrm uses a single **PostgreSQL** relational database shared by all nine Django apps. The
 persistence layer is managed by the **Django ORM** (code-first, model-driven schema). Schema
 lifecycle is handled via Django's built-in migration framework; each app owns its `migrations/`
 directory and forward-only migration files. There are no backward migration rollback scripts.
@@ -20,7 +20,9 @@ scenarios.
 **Inheritance strategy:** Django Multi-Table Inheritance (MTI) is used in four domains:
 `Contacts` (Party → Organization / PartyContact), `Contracts` (CommercialDocument → seven subtypes),
 `Products` (Price → ProductPrice), and `DjangoUserExtension` (DocumentTemplate → ten subtype
-templates).
+templates). The products EAV layer additionally uses an **abstract** base class
+(`ProductAttributeValueBase`) shared by the six typed attribute-value tables — abstract
+inheritance produces no parent table, unlike MTI.
 
 ---
 
@@ -32,10 +34,10 @@ templates).
 | RoleInWorkspace | core | `crm_roleinworkspace` | id PK, role | FK to auth.Group, FK to Workspace |
 | WorkspaceSwitchEvent | core | `crm_workspaceswitchevent` | id PK, timestamp | FK to auth.User, FK to Workspace (from/to) |
 | Currency | core | `crm_currency` | id PK, short_name, rounding | Referenced by CommercialDocument, Price, CurrencyTransform |
-| CurrencyTransform | core | `crm_currencytransform` | id PK, factor | FK to Currency (from/to), FK to ProductType |
-| Tax | core | `crm_tax` | id PK, tax_rate, name | Referenced by ProductType; extended by TaxAccountAssignment |
-| Unit | core | `crm_unit` | id PK, short_name | Self-FK (fraction hierarchy); referenced by Price, Position |
-| UnitTransform | core | `crm_unittransform` | id PK, factor | FK to Unit (from/to), FK to ProductType |
+| CurrencyTransform | core | `crm_currencytransform` | id PK, factor | FK to Currency (from/to), FK to Product |
+| Tax | core | `crm_tax` | id PK, tax_rate, name | Referenced by Product (tax_class); extended by TaxAccountAssignment |
+| Unit | core | `crm_unit` | id PK, short_name | Self-FK (fraction hierarchy); referenced by Price, Position, Product, stock quantity records |
+| UnitTransform | core | `crm_unittransform` | id PK, factor | FK to Unit (from/to), FK to Product |
 | PDFExportProcess | core | `crm_pdfexportprocess` | id PK, source_model, source_id, status, result_url | FK to Workspace, FK to DocumentTemplate, FK to auth.User |
 | Party | contacts | `crm_party` | id PK, display_name, default_language | FK to Workspace, FK to CustomerBillingCycle; root of MTI hierarchy |
 | PartyContact | contacts | `crm_partycontact` | party_ptr PK, given_name, family_name, gdpr_consent_date | MTI child of Party |
@@ -62,21 +64,65 @@ templates).
 | CreditNote | contracts | `crm_creditnote` | commercialdocument_ptr PK, issue_date, reason, status | MTI child of CommercialDocument; FK to Invoice |
 | DespatchAdvice | contracts | `crm_despatchadvice` | commercialdocument_ptr PK, tracking_reference, status | MTI child of CommercialDocument |
 | PaymentReminder | contracts | `crm_paymentreminder` | commercialdocument_ptr PK, payable_until, iteration_number | MTI child of CommercialDocument |
-| CommercialDocumentPosition | contracts | `crm_commercialdocumentposition` | id PK, position_number, quantity, last_calculated_price | FK to CommercialDocument, FK to ProductType, FK to Unit |
+| CommercialDocumentPosition | contracts | `crm_commercialdocumentposition` | id PK, position_number, quantity, last_calculated_price | FK to CommercialDocument, FK to Product (field `product_type`), FK to Unit |
 | ContractAddressAssignment | contracts | `crm_contractaddressassignment` | id PK, purpose, is_primary | FK to Contract, FK to Address |
 | CommercialDocumentAddressAssignment | contracts | `crm_commercialdocumentaddressassignment` | id PK, purpose, is_primary | FK to CommercialDocument, FK to Address |
 | TextParagraphInCommercialDocument | contracts | `crm_textparagraphincommercialdocument` | id PK, purpose, text_paragraph | FK to CommercialDocument |
-| ProductType | products | `crm_producttype` | id PK, title, product_type_identifier | FK to Workspace, FK to Unit, FK to Tax |
-| Product | products | `crm_product` | id PK, identifier | FK to Workspace, FK to ProductType |
-| Price | products | `crm_price` | id PK, price, valid_from, valid_until | FK to Workspace, FK to Unit, FK to Currency, FK to PartyGroup |
-| ProductPrice | products | `crm_productprice` | price_ptr PK | MTI child of Price; FK to ProductType |
-| CustomerGroupTransform | products | `crm_customergrouptransform` | id PK, factor | FK to Workspace, FK to PartyGroup (from/to), FK to ProductType |
+| Product | products | `products_product` | id PK, title, product_type_identifier, kind, lifecycle_status, brand, country_of_origin, kit_mode | FK to Workspace, FK to Unit (base_uom), FK to Tax (tax_class), FK to Party (manufacturer), FK to ProductFamily |
+| ProductFamily | products | `products_productfamily` | id PK, name | FK to Workspace; referenced by Product, AttributeSet |
+| ProductVariant | products | `products_productvariant` | id PK, sku, gtin, mpn, weight_kg, dimensions, tracking_mode, axis_values | FK to Workspace, FK to Product; referenced by ProductPrice, typed EAV values, and all stock tracking entities |
+| ProductTranslation | products | `products_producttranslation` | id PK, language_code, name; UNIQUE(product, language_code) | FK to Workspace, FK to Product |
+| ProductMedia | products | `products_productmedia` | id PK, media_type, object_key | FK to Workspace, FK to Product, FK to ProductVariant (both nullable) |
+| Classification | products | `products_classification` | id PK, code UNIQUE, name | Global (no workspace FK); parent of ClassificationNode |
+| ClassificationNode | products | `products_classificationnode` | id PK, code, name, level; UNIQUE(classification, code) | FK to Classification, self-FK parent; referenced by ProductClassification, AttributeSet |
+| ProductClassification | products | `products_productclassification` | id PK; UNIQUE(product, classification_node) | FK to Workspace, FK to Product, FK to ClassificationNode |
+| AttributeGroup | products | `products_attributegroup` | id PK, scope, key, name; UNIQUE(workspace, key) | Nullable FK to Workspace (NULL for GLOBAL-scope rows) |
+| AttributeDefinition | products | `products_attributedefinition` | id PK, scope, key, canonical_key, label, data_type, min/max/regex/enum_values; UNIQUE(workspace, key) | Nullable FK to Workspace, FK to Unit, FK to AttributeGroup |
+| AttributeSet | products | `products_attributeset` | id PK, name, kind | FK to Workspace, FK to ClassificationNode, FK to ProductFamily; M2M to AttributeGroup through AttributeSetGroup |
+| AttributeSetGroup | products | `products_attributesetgroup` | id PK, order; UNIQUE(attribute_set, attribute_group) | FK to AttributeSet, FK to AttributeGroup (M2M through table) |
+| AttributeSetDefault | products | `products_attributesetdefault` | id PK, default_value; UNIQUE(attribute_set, attribute_definition) | FK to Workspace, FK to AttributeSet, FK to AttributeDefinition |
+| AttributeValidationRule | products | `products_attributevalidationrule` | id PK, key, order, is_active, condition, then; UNIQUE(attribute_set, key) | FK to Workspace, FK to AttributeSet |
+| ProductAttributeBool | products | `products_productattributebool` | id PK, value; UNIQUE(product, variant, attribute_definition) | FK to Workspace, FK to Product, FK to ProductVariant, FK to AttributeDefinition, FK to ProductAttributeMapping |
+| ProductAttributeInt | products | `products_productattributeint` | id PK, value; UNIQUE(product, variant, attribute_definition) | Same FK set as ProductAttributeBool |
+| ProductAttributeDecimal | products | `products_productattributedecimal` | id PK, value, unit; UNIQUE(product, variant, attribute_definition) | Same FK set as ProductAttributeBool plus FK to Unit |
+| ProductAttributeString | products | `products_productattributestring` | id PK, value; UNIQUE(product, variant, attribute_definition) | Same FK set as ProductAttributeBool |
+| ProductAttributeEnum | products | `products_productattributeenum` | id PK, value; UNIQUE(product, variant, attribute_definition) | Same FK set as ProductAttributeBool |
+| ProductAttributeReference | products | `products_productattributereference` | id PK, object_id; UNIQUE(product, variant, attribute_definition) | Same FK set as ProductAttributeBool plus FK to ContentType (GenericForeignKey) |
+| ProductAttributeMapping | products | `products_productattributemapping` | id PK, source_standard, source_attribute_id, canonical_key, transform; UNIQUE(workspace, source_standard, source_attribute_id) | FK to Workspace; referenced by typed value rows (source_mapping) |
+| ProductAttributeMirror | products | `products_productattributemirror` | id PK, data JSONB; UNIQUE(product, variant) | FK to Workspace, FK to Product, FK to ProductVariant |
+| PriceList | products | `products_pricelist` | id PK, name, channel; UNIQUE(workspace, name) | FK to Workspace, FK to PartyGroup |
+| Price | products | `crm_price` | id PK, price, valid_from, valid_until | FK to Workspace, FK to Unit, FK to Currency, FK to PartyGroup; MTI parent of ProductPrice |
+| ProductPrice | products | `crm_productprice` | price_ptr PK | MTI child of Price; FK to ProductVariant, FK to PriceList |
+| CustomerGroupTransform | products | `crm_customergrouptransform` | id PK, factor | FK to Workspace, FK to PartyGroup (from/to), FK to Product (field `product_type`) |
+| UnitOfMeasureConversion | products | `products_unitofmeasureconversion` | id PK, factor; UNIQUE(product, from_unit, to_unit) | FK to Workspace, FK to Product, FK to Unit (from/to) |
+| ProductSupply | products | `products_productsupply` | id PK, supplier_sku, lead_time_days, moq, purchase_price; UNIQUE(product, supplier) | FK to Workspace, FK to Product, FK to Party (supplier), FK to Currency |
+| BillOfMaterials | products | `products_billofmaterials` | id PK, name, version | FK to Workspace; OneToOne to Product |
+| BomItem | products | `products_bomitem` | id PK, quantity, scrap_pct | FK to Workspace, FK to BillOfMaterials, FK to Product (component + alternative), FK to ProductVariant (default), FK to Unit |
+| ServiceProfile | products | `products_serviceprofile` | id PK, billing_model, default_duration, sla_reference | FK to Workspace; OneToOne to Product |
+| ProductPassport | products | `products_productpassport` | id PK, passport_data JSONB | FK to Workspace; OneToOne to Product |
+| Location | stock | `stock_location` | id PK, location_type, code, name, is_active; UNIQUE(workspace, code), UNIQUE(workspace, external_ref) | FK to Workspace, self-FK parent |
+| HandlingUnit | stock | `stock_handlingunit` | id PK, sscc, hu_type, is_open; UNIQUE(workspace, sscc) | FK to Workspace, self-FK parent_handling_unit, FK to Location |
+| Batch | stock | `stock_batch` | id PK, batch_number, expiry_date, quarantine; UNIQUE(workspace, variant, batch_number) | FK to Workspace, FK to ProductVariant |
+| SerialUnit | stock | `stock_serialunit` | id PK, serial_number, global_uid, condition_state; UNIQUE(workspace, variant, serial_number), UNIQUE(workspace, global_uid) | FK to Workspace, FK to ProductVariant, FK to Batch |
+| OnHandRecord | stock | `stock_onhandrecord` | id PK, owner_type, qty_on_hand; UNIQUE(workspace, variant, location, batch, serial_unit, owner_type, owner_party) | FK to Workspace, FK to ProductVariant, FK to Location, FK to Batch, FK to SerialUnit, FK to HandlingUnit, FK to Party (owner), FK to Unit |
+| RetentionPolicy | stock | `stock_retentionpolicy` | id PK, retention floor days; UNIQUE(workspace) | FK to Workspace (one policy per workspace) |
+| MovementReasonCode | stock | `stock_movementreasoncode` | id PK, code UNIQUE, label_de, label_en, applies_to_business_steps | Global seed table (no workspace FK); referenced by StockMovement |
+| MovementReasonCodeExtension | stock | `stock_movementreasoncodeextension` | id PK, code, label_de, label_en; UNIQUE(workspace, code) | FK to Workspace |
+| StockMovement | stock | `stock_stockmovement` | id PK, event_type, business_step, occurred_at, qty, disposition, idempotency_key; UNIQUE(workspace, idempotency_key) | FK to Workspace, FK to Product, FK to ProductVariant, FK to Location (source/destination), FK to Batch, FK to SerialUnit, FK to HandlingUnit, FK to MovementReasonCode, FK to Party (owner), FK to ContentType (document), self-FK compensates, FK to auth.User |
+| StockBalance | stock | `stock_stockbalance` | id PK, qty_on_hand/booked/reserved_for_document/ordered/in_transit/quarantine; UNIQUE(workspace, variant, location) | FK to Workspace, FK to ProductVariant, FK to Location, FK to Unit |
+| StockReservation | stock | `stock_stockreservation` | id PK, kind, reservation_type, reservation_status, qty_reserved, rental_start/end, expires_at | FK to Workspace, FK to ProductVariant, FK to Location, FK to Batch, FK to SerialUnit, FK to ContentType (document), FK to Unit |
+| RentalAssignment | stock | `stock_rentalassignment` | id PK, status, rental_start, return_due_date, condition_at_return | FK to Workspace, FK to SerialUnit, FK to OnHandRecord, FK to StockReservation, FK to Party, FK to ContentType (document) |
+| GoodsReceipt | stock | `stock_goodsreceipt` | id PK, external_doc_ref, received_at, status | FK to Workspace, FK to Party (supplier), FK to auth.User |
+| GoodsReceiptLine | stock | `stock_goodsreceiptline` | id PK, expected_qty, received_qty, line_status | FK to Workspace, FK to GoodsReceipt, FK to ProductVariant, FK to Unit, FK to Batch, FK to SerialUnit, FK to Location (target), FK to StockMovement (posted) |
+| ProductionOrder | stock | `stock_productionorder` | id PK, planned_qty, status, planned_start, completed_at, aggregation_group | FK to Workspace, FK to Product, FK to BillOfMaterials, FK to Unit, FK to SerialUnit / Batch (finished output), FK to ContentType (document) |
+| ProductionOrderComponent | stock | `stock_productionordercomponent` | id PK, planned_qty, actual_qty | FK to Workspace, FK to ProductionOrder, FK to BomItem, FK to Product, FK to ProductVariant, FK to Batch, FK to Unit, FK to StockReservation |
+| BillOfMaterialsExplosion | stock | `stock_billofmaterialsexplosion` | id PK, bom_version, depth, effective_qty, computed_at | FK to Workspace, FK to BillOfMaterials, FK to BomItem, FK to Unit |
 | Account | accounting | (no db_table set) | id PK, account_number, account_type, title | Referenced by Booking, TaxAccountAssignment, ProductCategory |
 | AccountingPeriod | accounting | (no db_table set) | id PK, title, begin, end | Referenced by Booking; FK to DocumentTemplate (x2) |
 | Booking | accounting | (no db_table set) | id PK, amount, booking_date | FK to Account (from/to), FK to AccountingPeriod, FK to Invoice |
 | ProductCategory | accounting | (no db_table set) | id PK, title | FK to Account (profit/loss) |
 | TaxAccountAssignment | accounting | (no db_table set) | id PK | OneToOne to Tax; FK to Account (activa/passiva) |
-| ProductCategoryAssignment | accounting | (no db_table set) | id PK | OneToOne to ProductType; FK to ProductCategory |
+| ProductCategoryAssignment | accounting | (no db_table set) | id PK | OneToOne to Product; FK to ProductCategory |
 | Project | reporting | `crm_project` | id PK, project_name | FK to Workspace, FK to ProjectStatus, FK to Currency, FK to TemplateSet |
 | Task | reporting | `crm_task` | id PK, last_status_change | FK to Project, FK to TaskStatus |
 | Work | reporting | `crm_work` | id PK, date, start_time | FK to HumanResource, FK to Task, FK to ReportingPeriod |
@@ -100,7 +146,7 @@ templates).
 | ResourceType | reporting | `crm_resourcetype` | id PK, title | Referenced by Resource |
 | Subscription | subscriptions | (no db_table set) | id PK | FK to Contract, FK to SubscriptionType |
 | SubscriptionEvent | subscriptions | (no db_table set) | id PK, event_date, event | FK to Subscription |
-| SubscriptionType | subscriptions | (no db_table set) | id PK, cancellation_period, payment_interval | FK to ProductType |
+| SubscriptionType | subscriptions | (no db_table set) | id PK, cancellation_period, payment_interval | FK to Product (field `product_type`) |
 | DocumentTemplate | djangoUserExtension | (no db_table set) | id PK, title, xsl_file | FK to Workspace; base of MTI template hierarchy |
 | TemplateSet | djangoUserExtension | (no db_table set) | id PK, title | FK to Workspace; FK to ten DocumentTemplate subtypes |
 | TextParagraphInDocumentTemplate | djangoUserExtension | `crm_textparagraphindocumenttemplate` | id PK, purpose, text_paragraph | FK to DocumentTemplate |
@@ -301,23 +347,56 @@ PaymentReminder also extend CommercialDocument via MTI but are omitted here for 
 
 ### Module: Products
 
-The products module defines product catalogue items (`ProductType`, `Product`) and a flexible
-price resolution system. `Price` is the abstract MTI parent; `ProductPrice` extends it with a
-`product_type` FK. Price applicability is evaluated against date ranges, currency, unit, and
-party-group membership. Unit and currency conversion factors are kept in transform tables.
+The products module implements the product catalog backbone (ADR-0003/ADR-0021): `Product` is
+the catalog root (kind, lifecycle status, base unit of measure, tax class, brand, manufacturer,
+country of origin, kit mode), `ProductVariant` is the sellable SKU carrying identifiers and
+physical properties, and `ProductFamily` groups related products. Prices are keyed to the
+**variant** — `Price` is the MTI parent; `ProductPrice` extends it with `variant` and an optional
+`price_list` FK (three-level price precedence). Sourcing (`ProductSupply`), unit conversions
+(`UnitOfMeasureConversion`), bill of materials (`BillOfMaterials`/`BomItem`), and the
+kind-specific satellites (`ServiceProfile`, `ProductPassport`) complete the backbone. Because
+the diagram would be unreadably large as one picture, it is split into two: catalog/pricing/
+sourcing and classification/attributes.
 
 ```mermaid
 erDiagram
-    PRODUCTTYPE {
+    PRODUCT {
         bigint id PK
         varchar title
         varchar product_type_identifier
-        text description
-        datetime date_of_creation
+        varchar kind
+        varchar lifecycle_status
+        varchar brand
+        char country_of_origin
+        varchar kit_mode
     }
-    PRODUCT {
+    PRODUCTFAMILY {
         bigint id PK
-        varchar identifier
+        varchar name
+    }
+    PRODUCTVARIANT {
+        bigint id PK
+        varchar sku
+        varchar gtin
+        varchar mpn
+        decimal weight_kg
+        varchar tracking_mode
+        jsonb axis_values
+    }
+    PRODUCTTRANSLATION {
+        bigint id PK
+        char language_code
+        varchar name
+    }
+    PRODUCTMEDIA {
+        bigint id PK
+        varchar media_type
+        varchar object_key
+    }
+    PRICELIST {
+        bigint id PK
+        varchar name
+        varchar channel
     }
     PRICE {
         bigint id PK
@@ -332,28 +411,367 @@ erDiagram
         bigint id PK
         decimal factor
     }
-    UNITTRANSFORM {
+    UNITOFMEASURECONVERSION {
         bigint id PK
         decimal factor
     }
-    CURRENCYTRANSFORM {
+    PRODUCTSUPPLY {
         bigint id PK
-        decimal factor
+        varchar supplier_sku
+        int lead_time_days
+        decimal moq
+        decimal purchase_price
+    }
+    BILLOFMATERIALS {
+        bigint id PK
+        varchar name
+        int version
+    }
+    BOMITEM {
+        bigint id PK
+        decimal quantity
+        decimal scrap_pct
+    }
+    SERVICEPROFILE {
+        bigint id PK
+        varchar billing_model
+        int default_duration
+    }
+    PRODUCTPASSPORT {
+        bigint id PK
+        jsonb passport_data
     }
 
-    PRODUCT }o--|| PRODUCTTYPE : "instance of"
+    PRODUCT }o--o| PRODUCTFAMILY : "family"
+    PRODUCT }o--o| PARTY : "manufacturer_party"
+    PRODUCTVARIANT }o--|| PRODUCT : "variant of"
+    PRODUCTTRANSLATION }o--|| PRODUCT : "localizes"
+    PRODUCTMEDIA }o--o| PRODUCT : "media for"
+    PRODUCTMEDIA }o--o| PRODUCTVARIANT : "media for variant"
     PRODUCTPRICE ||--|| PRICE : "extends (MTI)"
-    PRODUCTPRICE }o--|| PRODUCTTYPE : "priced for"
+    PRODUCTPRICE }o--|| PRODUCTVARIANT : "prices"
+    PRODUCTPRICE }o--o| PRICELIST : "grouped by"
     PRICE }o--o| PARTYGROUP : "valid for party group"
+    PRICELIST }o--o| PARTYGROUP : "segment"
     CUSTOMERGROUPTRANSFORM }o--|| PARTYGROUP : "from group"
     CUSTOMERGROUPTRANSFORM }o--|| PARTYGROUP : "to group"
-    CUSTOMERGROUPTRANSFORM }o--|| PRODUCTTYPE : "applies to"
-    UNITTRANSFORM }o--|| PRODUCTTYPE : "applies to"
-    CURRENCYTRANSFORM }o--|| PRODUCTTYPE : "applies to"
+    CUSTOMERGROUPTRANSFORM }o--|| PRODUCT : "applies to"
+    UNITOFMEASURECONVERSION }o--|| PRODUCT : "converts units of"
+    PRODUCTSUPPLY }o--|| PRODUCT : "sources"
+    PRODUCTSUPPLY }o--|| PARTY : "supplier"
+    BILLOFMATERIALS ||--|| PRODUCT : "defines assembly of"
+    BOMITEM }o--|| BILLOFMATERIALS : "line of"
+    BOMITEM }o--|| PRODUCT : "component_product"
+    BOMITEM }o--o| PRODUCT : "alternative_component"
+    BOMITEM }o--o| PRODUCTVARIANT : "default_component_variant"
+    SERVICEPROFILE ||--|| PRODUCT : "service terms of"
+    PRODUCTPASSPORT ||--|| PRODUCT : "passport of"
 ```
 
-*Figure 4: Products module — product catalogue and multi-axis price resolution. `PARTYGROUP` is
-owned by the contacts module; `UNITTRANSFORM` and `CURRENCYTRANSFORM` are owned by the core module.*
+*Figure 4: Products module, part 1 — catalog backbone, variant-keyed pricing, sourcing, and bill
+of materials. `PARTY` and `PARTYGROUP` are owned by the contacts module. `UnitTransform` and
+`CurrencyTransform` (core module) still exist and now carry an FK to `Product`; FKs to
+`core.Unit`, `core.Tax`, and `core.Currency` are omitted for readability.*
+
+The second half of the products module is the classification and attribute (EAV) layer
+(ADR-0004/ADR-0018): global classification trees (`Classification`/`ClassificationNode`),
+attribute metadata (`AttributeGroup`, `AttributeDefinition`, `AttributeSet` with its through
+table `AttributeSetGroup`, `AttributeSetDefault`, `AttributeValidationRule`), six typed
+attribute-value tables sharing the abstract `ProductAttributeValueBase`, the import mapping
+table `ProductAttributeMapping`, and the denormalized read-model `ProductAttributeMirror`.
+
+```mermaid
+erDiagram
+    CLASSIFICATION {
+        bigint id PK
+        varchar code
+        varchar name
+    }
+    CLASSIFICATIONNODE {
+        bigint id PK
+        varchar code
+        varchar name
+        smallint level
+    }
+    PRODUCTCLASSIFICATION {
+        bigint id PK
+    }
+    ATTRIBUTEGROUP {
+        bigint id PK
+        varchar scope
+        varchar key
+        varchar name
+    }
+    ATTRIBUTEDEFINITION {
+        bigint id PK
+        varchar scope
+        varchar key
+        varchar canonical_key
+        varchar label
+        varchar data_type
+    }
+    ATTRIBUTESET {
+        bigint id PK
+        varchar name
+        varchar kind
+    }
+    ATTRIBUTESETGROUP {
+        bigint id PK
+        int order_index
+    }
+    ATTRIBUTESETDEFAULT {
+        bigint id PK
+        jsonb default_value
+    }
+    ATTRIBUTEVALIDATIONRULE {
+        bigint id PK
+        varchar key
+        jsonb condition
+        jsonb then_actions
+    }
+    PRODUCTATTRIBUTEVALUE {
+        bigint id PK
+        varchar value
+        datetime imported_at
+    }
+    PRODUCTATTRIBUTEMAPPING {
+        bigint id PK
+        varchar source_standard
+        varchar source_attribute_id
+        varchar canonical_key
+    }
+    PRODUCTATTRIBUTEMIRROR {
+        bigint id PK
+        jsonb data
+    }
+
+    CLASSIFICATIONNODE }o--|| CLASSIFICATION : "node of"
+    CLASSIFICATIONNODE }o--o| CLASSIFICATIONNODE : "parent"
+    PRODUCTCLASSIFICATION }o--|| PRODUCT : "classifies"
+    PRODUCTCLASSIFICATION }o--|| CLASSIFICATIONNODE : "into node"
+    ATTRIBUTEDEFINITION }o--o| ATTRIBUTEGROUP : "grouped in"
+    ATTRIBUTESET }o--o| CLASSIFICATIONNODE : "bound to node"
+    ATTRIBUTESET }o--o| PRODUCTFAMILY : "bound to family"
+    ATTRIBUTESETGROUP }o--|| ATTRIBUTESET : "orders groups of"
+    ATTRIBUTESETGROUP }o--|| ATTRIBUTEGROUP : "includes"
+    ATTRIBUTESETDEFAULT }o--|| ATTRIBUTESET : "default in"
+    ATTRIBUTESETDEFAULT }o--|| ATTRIBUTEDEFINITION : "defaults"
+    ATTRIBUTEVALIDATIONRULE }o--|| ATTRIBUTESET : "validates"
+    PRODUCTATTRIBUTEVALUE }o--|| PRODUCT : "value for"
+    PRODUCTATTRIBUTEVALUE }o--o| PRODUCTVARIANT : "variant override"
+    PRODUCTATTRIBUTEVALUE }o--|| ATTRIBUTEDEFINITION : "typed by"
+    PRODUCTATTRIBUTEVALUE }o--o| PRODUCTATTRIBUTEMAPPING : "imported via"
+    PRODUCTATTRIBUTEMIRROR }o--|| PRODUCT : "mirrors"
+    PRODUCTATTRIBUTEMIRROR }o--o| PRODUCTVARIANT : "mirrors variant"
+```
+
+*Figure 5: Products module, part 2 — classification trees and the typed EAV attribute layer.
+`PRODUCTATTRIBUTEVALUE` stands for the six concrete tables `ProductAttributeBool` / `Int` /
+`Decimal` / `String` / `Enum` / `Reference`, which share the abstract base
+`ProductAttributeValueBase` and the unique key `(product, variant, attribute_definition)`.
+`Classification`, `ClassificationNode`, and GLOBAL-scope `AttributeGroup` /
+`AttributeDefinition` rows are cross-workspace; everything else is workspace-scoped.*
+
+### Module: Stock
+
+The stock module (new with the products/stock domain implementation) provides warehouse
+structure, inventory tracking, and the movement ledger. `Location` (hierarchical) and
+`HandlingUnit` (SSCC-labelled, nestable) form the physical backbone; `Batch` and `SerialUnit`
+implement the variant `tracking_mode` granularities; `OnHandRecord` is the fine-grained on-hand
+projection and `StockBalance` the per-variant/location quantity summary. All stock entities are
+workspace-scoped except the global `MovementReasonCode` seed table (workspace-specific codes go
+into `MovementReasonCodeExtension`).
+
+```mermaid
+erDiagram
+    LOCATION {
+        bigint id PK
+        varchar location_type
+        varchar code
+        varchar name
+        bool is_active
+    }
+    HANDLINGUNIT {
+        bigint id PK
+        varchar sscc
+        varchar hu_type
+        bool is_open
+    }
+    BATCH {
+        bigint id PK
+        varchar batch_number
+        varchar supplier_lot_number
+        date expiry_date
+        bool quarantine
+    }
+    SERIALUNIT {
+        bigint id PK
+        varchar serial_number
+        varchar global_uid
+        varchar condition_state
+        date warranty_expiry
+    }
+    ONHANDRECORD {
+        bigint id PK
+        varchar owner_type
+        decimal qty_on_hand
+    }
+    STOCKBALANCE {
+        bigint id PK
+        decimal qty_on_hand
+        decimal qty_booked
+        decimal qty_reserved_for_document
+        decimal qty_ordered
+        decimal qty_in_transit
+        decimal qty_quarantine
+    }
+    RETENTIONPOLICY {
+        bigint id PK
+        int serial_unit_retention_floor_days
+        int stock_movement_retention_floor_days
+    }
+    MOVEMENTREASONCODE {
+        bigint id PK
+        varchar code
+        varchar label_de
+        varchar label_en
+    }
+    MOVEMENTREASONCODEEXTENSION {
+        bigint id PK
+        varchar code
+        varchar label_de
+        varchar label_en
+    }
+
+    LOCATION }o--o| LOCATION : "parent"
+    HANDLINGUNIT }o--o| HANDLINGUNIT : "packed in"
+    HANDLINGUNIT }o--|| LOCATION : "located at"
+    BATCH }o--|| PRODUCTVARIANT : "batch of"
+    SERIALUNIT }o--|| PRODUCTVARIANT : "serial of"
+    SERIALUNIT }o--o| BATCH : "produced in"
+    ONHANDRECORD }o--|| PRODUCTVARIANT : "stock of"
+    ONHANDRECORD }o--|| LOCATION : "at"
+    ONHANDRECORD }o--o| BATCH : "batch detail"
+    ONHANDRECORD }o--o| SERIALUNIT : "serial detail"
+    ONHANDRECORD }o--o| HANDLINGUNIT : "packed in"
+    ONHANDRECORD }o--o| PARTY : "owner_party"
+    STOCKBALANCE }o--|| PRODUCTVARIANT : "summary for"
+    STOCKBALANCE }o--|| LOCATION : "at"
+    RETENTIONPOLICY ||--|| WORKSPACE : "one per workspace"
+```
+
+*Figure 6: Stock module, part 1 — location/handling-unit backbone, batch and serial tracking,
+and the on-hand projections. `PRODUCTVARIANT` is owned by the products module; `PARTY` by the
+contacts module. `MovementReasonCode` is a global seed table; `MovementReasonCodeExtension`
+holds workspace-specific additions.*
+
+The second half of the stock module is the event ledger and the process aggregates built on it:
+`StockMovement` is the append-only, idempotent movement ledger (EPCIS-style event_type /
+business_step / disposition vocabulary, compensation via self-FK); `StockReservation` holds
+document- and rental-driven reservations; `RentalAssignment` tracks serialized units out on
+rental; `GoodsReceipt`/`GoodsReceiptLine` and `ProductionOrder`/`ProductionOrderComponent` are
+the inbound and assembly process aggregates; `BillOfMaterialsExplosion` caches recursive BOM
+explosions per version.
+
+```mermaid
+erDiagram
+    STOCKMOVEMENT {
+        bigint id PK
+        varchar event_type
+        varchar business_step
+        datetime occurred_at
+        decimal qty
+        varchar disposition
+        uuid idempotency_key
+    }
+    STOCKRESERVATION {
+        bigint id PK
+        varchar kind
+        varchar reservation_type
+        varchar reservation_status
+        decimal qty_reserved
+        datetime rental_start
+        datetime rental_end
+    }
+    RENTALASSIGNMENT {
+        bigint id PK
+        varchar status
+        datetime rental_start
+        date return_due_date
+        varchar condition_at_return
+    }
+    GOODSRECEIPT {
+        bigint id PK
+        varchar external_doc_ref
+        datetime received_at
+        varchar status
+    }
+    GOODSRECEIPTLINE {
+        bigint id PK
+        decimal expected_qty
+        decimal received_qty
+        varchar line_status
+    }
+    PRODUCTIONORDER {
+        bigint id PK
+        decimal planned_qty
+        varchar status
+        datetime planned_start
+        datetime completed_at
+        uuid aggregation_group
+    }
+    PRODUCTIONORDERCOMPONENT {
+        bigint id PK
+        decimal planned_qty
+        decimal actual_qty
+    }
+    BILLOFMATERIALSEXPLOSION {
+        bigint id PK
+        int bom_version
+        int depth
+        decimal effective_qty
+        datetime computed_at
+    }
+
+    STOCKMOVEMENT }o--|| PRODUCT : "moves"
+    STOCKMOVEMENT }o--|| PRODUCTVARIANT : "moves variant"
+    STOCKMOVEMENT }o--o| LOCATION : "source_location"
+    STOCKMOVEMENT }o--o| LOCATION : "destination_location"
+    STOCKMOVEMENT }o--o| BATCH : "batch"
+    STOCKMOVEMENT }o--o| SERIALUNIT : "serial_unit"
+    STOCKMOVEMENT }o--o| HANDLINGUNIT : "handling_unit"
+    STOCKMOVEMENT }o--o| MOVEMENTREASONCODE : "reason"
+    STOCKMOVEMENT }o--o| PARTY : "owner_party"
+    STOCKMOVEMENT }o--o| STOCKMOVEMENT : "compensates"
+    STOCKRESERVATION }o--|| PRODUCTVARIANT : "reserves"
+    STOCKRESERVATION }o--o| LOCATION : "at"
+    STOCKRESERVATION }o--o| BATCH : "batch"
+    STOCKRESERVATION }o--o| SERIALUNIT : "serial_unit"
+    RENTALASSIGNMENT }o--o| SERIALUNIT : "rents out"
+    RENTALASSIGNMENT }o--|| STOCKRESERVATION : "fulfils"
+    RENTALASSIGNMENT }o--|| PARTY : "rented to"
+    GOODSRECEIPT }o--|| PARTY : "supplier_party"
+    GOODSRECEIPTLINE }o--|| GOODSRECEIPT : "line of"
+    GOODSRECEIPTLINE }o--|| PRODUCTVARIANT : "receives"
+    GOODSRECEIPTLINE }o--o| LOCATION : "target_location"
+    GOODSRECEIPTLINE }o--o| STOCKMOVEMENT : "posted_movement"
+    PRODUCTIONORDER }o--|| PRODUCT : "produces"
+    PRODUCTIONORDER }o--|| BILLOFMATERIALS : "per BOM"
+    PRODUCTIONORDER }o--o| SERIALUNIT : "finished_serial_unit"
+    PRODUCTIONORDER }o--o| BATCH : "finished_batch"
+    PRODUCTIONORDERCOMPONENT }o--|| PRODUCTIONORDER : "component of"
+    PRODUCTIONORDERCOMPONENT }o--|| BOMITEM : "planned from"
+    PRODUCTIONORDERCOMPONENT }o--|| PRODUCTVARIANT : "consumes"
+    PRODUCTIONORDERCOMPONENT }o--o| STOCKRESERVATION : "reserved by"
+    BILLOFMATERIALSEXPLOSION }o--|| BILLOFMATERIALS : "explodes"
+    BILLOFMATERIALSEXPLOSION }o--|| BOMITEM : "resolved item"
+```
+
+*Figure 7: Stock module, part 2 — movement ledger, reservations, rentals, goods receipt, and
+production. `PRODUCT`, `PRODUCTVARIANT`, `BILLOFMATERIALS`, and `BOMITEM` are owned by the
+products module. Generic document references (`document_type`/`document_id` via ContentType on
+StockMovement, StockReservation, RentalAssignment, ProductionOrder), `uom` FKs to `core.Unit`,
+and `created_by` FKs to `auth.User` are omitted for readability.*
 
 ### Module: Accounting
 
@@ -361,7 +779,7 @@ The accounting module is an optional app. It implements double-entry bookkeeping
 group into `ProductCategory` for profit/loss aggregation. `Booking` records reference the source
 `Invoice` and are scoped to an `AccountingPeriod`. Two assignment tables (`TaxAccountAssignment`,
 `ProductCategoryAssignment`) keep the accounting-specific FKs off the fork-public `core.Tax` and
-`products.ProductType` models.
+`products.Product` models.
 
 ```mermaid
 erDiagram
@@ -405,12 +823,12 @@ erDiagram
     TAXACCOUNTASSIGNMENT ||--|| TAX : "extends (optional peer)"
     TAXACCOUNTASSIGNMENT }o--o| ACCOUNT : "activa_account"
     TAXACCOUNTASSIGNMENT }o--o| ACCOUNT : "passiva_account"
-    PRODUCTCATEGORYASSIGNMENT ||--|| PRODUCTTYPE : "extends (optional peer)"
+    PRODUCTCATEGORYASSIGNMENT ||--|| PRODUCT : "extends (optional peer)"
     PRODUCTCATEGORYASSIGNMENT }o--|| PRODUCTCATEGORY : "category"
 ```
 
-*Figure 5: Accounting module — double-entry ledger, accounting periods, and the two optional-peer
-assignment tables. `TAX` and `PRODUCTTYPE` are owned by the core and products modules respectively.*
+*Figure 8: Accounting module — double-entry ledger, accounting periods, and the two optional-peer
+assignment tables. `TAX` and `PRODUCT` are owned by the core and products modules respectively.*
 
 ### Module: Reporting
 
@@ -474,7 +892,7 @@ erDiagram
     ESTIMATION }o--|| REPORTINGPERIOD : "based on"
 ```
 
-*Figure 6: Reporting module — project/task/work hierarchy, resource allocation agreements, and
+*Figure 9: Reporting module — project/task/work hierarchy, resource allocation agreements, and
 effort estimations. Status lookup tables (ProjectStatus, TaskStatus, ReportingPeriodStatus,
 AgreementStatus, AgreementType, EstimationStatus, ResourceType) and generic link tables are
 omitted for readability.*
@@ -515,7 +933,7 @@ erDiagram
     USEREXTENSION }o--|| TEMPLATESET : "default_template_set"
 ```
 
-*Figure 7: DjangoUserExtension module — DocumentTemplate MTI base and TemplateSet aggregator.
+*Figure 10: DjangoUserExtension module — DocumentTemplate MTI base and TemplateSet aggregator.
 The ten DocumentTemplate MTI subtypes (InvoiceTemplate, QuotationTemplate, SalesOrderTemplate,
 etc.) each map to a separate database table via MTI but share the same parent structure shown here.
 UserAddressAssignment, UserPhoneAssignment, and UserEmailAssignment are omitted for readability.*
@@ -548,10 +966,11 @@ erDiagram
     SUBSCRIPTION }o--|| CONTRACT : "based on"
     SUBSCRIPTION }o--o| SUBSCRIPTIONTYPE : "typed by"
     SUBSCRIPTIONEVENT }o--|| SUBSCRIPTION : "event for"
-    SUBSCRIPTIONTYPE }o--o| PRODUCTTYPE : "product"
+    SUBSCRIPTIONTYPE }o--o| PRODUCT : "product"
 ```
 
-*Figure 8: Subscriptions module — recurring service arrangement structure.*
+*Figure 11: Subscriptions module — recurring service arrangement structure. `PRODUCT` is owned
+by the products module; the FK field is still named `product_type` for historical reasons.*
 
 ---
 
@@ -612,9 +1031,36 @@ erDiagram
     }
 
     %% Module: Products
-    PRODUCTTYPE {
+    PRODUCT {
         bigint id PK
         varchar title
+        varchar kind
+        varchar lifecycle_status
+    }
+    PRODUCTVARIANT {
+        bigint id PK
+        varchar sku
+        varchar tracking_mode
+    }
+
+    %% Module: Stock
+    LOCATION {
+        bigint id PK
+        varchar code
+        varchar location_type
+    }
+    STOCKMOVEMENT {
+        bigint id PK
+        varchar event_type
+        varchar business_step
+    }
+    STOCKBALANCE {
+        bigint id PK
+        decimal qty_on_hand
+    }
+    STOCKRESERVATION {
+        bigint id PK
+        varchar kind
     }
 
     %% Module: Accounting
@@ -656,10 +1102,18 @@ erDiagram
     COMMERCIALDOCUMENT }o--|| PARTY : "party"
     COMMERCIALDOCUMENT }o--|| CURRENCY : "currency"
     COMMERCIALDOCUMENTPOSITION }o--|| COMMERCIALDOCUMENT : "line item of"
-    COMMERCIALDOCUMENTPOSITION }o--o| PRODUCTTYPE : "product"
+    COMMERCIALDOCUMENTPOSITION }o--o| PRODUCT : "product"
     COMMERCIALDOCUMENTPOSITION }o--o| UNIT : "unit"
-    PRODUCTTYPE }o--|| UNIT : "default_unit"
-    PRODUCTTYPE }o--|| TAX : "tax"
+    PRODUCT }o--|| UNIT : "base_uom"
+    PRODUCT }o--|| TAX : "tax_class"
+    PRODUCT }o--o| PARTY : "manufacturer_party"
+    PRODUCTVARIANT }o--|| PRODUCT : "variant of"
+    STOCKMOVEMENT }o--|| PRODUCTVARIANT : "moves"
+    STOCKMOVEMENT }o--o| LOCATION : "source / destination"
+    STOCKBALANCE }o--|| PRODUCTVARIANT : "summary for"
+    STOCKBALANCE }o--|| LOCATION : "at"
+    STOCKRESERVATION }o--|| PRODUCTVARIANT : "reserves"
+    LOCATION }o--|| WORKSPACE : "scoped to"
     BOOKING }o--|| ACCOUNT : "from_account"
     BOOKING }o--|| ACCOUNT : "to_account"
     BOOKING }o--o| COMMERCIALDOCUMENT : "booking_reference"
@@ -670,8 +1124,10 @@ erDiagram
     TEMPLATESET }o--o| DOCUMENTTEMPLATE : "aggregates"
 ```
 
-*Figure 9: Complete cross-module entity overview. Lookup tables, join tables, MTI subtypes, and
-status reference tables are collapsed for readability. See per-module diagrams for full detail.*
+*Figure 12: Complete cross-module entity overview. Lookup tables, join tables, MTI subtypes,
+EAV/classification tables, stock tracking detail (Batch, SerialUnit, HandlingUnit, OnHandRecord),
+and status reference tables are collapsed for readability. See per-module diagrams for full
+detail.*
 
 ---
 
@@ -790,12 +1246,12 @@ status reference tables are collapsed for readability. See per-module diagrams f
 | TextParagraphInCommercialDocument | One-to-Many | Boilerplate text sections |
 | Booking | One-to-Many | Accounting bookings that reference this document |
 
-### Entity: ProductType
+### Entity: Product
 
 | Property | Value |
 |----------|-------|
-| **Source File** | `koalixcrm/products/models/product_type.py` |
-| **Table** | `crm_producttype` |
+| **Source File** | `koalixcrm/products/models/product.py` |
+| **Table** | `products_product` (renamed from `crm_producttype` in migration `products.0007`) |
 | **Module** | products |
 
 **Attributes:**
@@ -807,8 +1263,16 @@ status reference tables are collapsed for readability. See per-module diagrams f
 | title | varchar(200) | NOT NULL | Display name |
 | product_type_identifier | varchar(200) | NULL | Human-readable product number |
 | description | text | NULL | Long-form description |
-| default_unit | FK → core.Unit | NOT NULL | Default unit of measure |
-| tax | FK → core.Tax | NOT NULL | Tax rate applied to positions |
+| kind | varchar(32) | NOT NULL, choices | SERVICE / TRADING_GOOD / MANUFACTURED_GOOD / KIT / RAW_MATERIAL |
+| lifecycle_status | varchar(32) | NOT NULL, choices | DRAFT / ACTIVE / DISCONTINUED / ARCHIVED / EXTERNAL_ONLY |
+| base_uom | FK → core.Unit | NOT NULL | Base unit of measure (renamed from `default_unit`) |
+| tax_class | FK → core.Tax | NOT NULL | Tax class (renamed from `tax`) |
+| brand | varchar(200) | NULL | Brand name |
+| manufacturer_party | FK → contacts.Party | NULL, SET_NULL | Manufacturer |
+| country_of_origin | char(2) | NULL | ISO 3166-1 alpha-2 country code |
+| product_family | FK → ProductFamily | NULL, SET_NULL | Family grouping |
+| kit_mode | varchar(16) | NULL, choices | EXPLODE_ON_PICK / PREASSEMBLE (kits only) |
+| last_modified_by | FK → auth.User | NULL | Staff user who last modified this record |
 | last_modification | datetime | auto_now | |
 | date_of_creation | datetime | auto_now_add | |
 
@@ -816,13 +1280,106 @@ status reference tables are collapsed for readability. See per-module diagrams f
 
 | Related Entity | Cardinality | Description |
 |---------------|-------------|-------------|
-| Product | One-to-Many | Specific product instances of this type |
-| ProductPrice | One-to-Many | Price entries for this product type |
+| ProductVariant | One-to-Many | Sellable SKUs of this product |
+| ProductTranslation | One-to-Many | Localized name/descriptions |
+| ProductMedia | One-to-Many | Images, datasheets, certificates |
+| ProductClassification | One-to-Many | Classification tree assignments |
+| ProductAttribute* value tables | One-to-Many | Typed EAV attribute values |
+| ProductAttributeMirror | One-to-Many | Denormalized attribute read-model |
 | CustomerGroupTransform | One-to-Many | Customer-group price adjustment factors |
-| UnitTransform | One-to-Many | Unit conversion factors |
-| CurrencyTransform | One-to-Many | Currency conversion factors |
-| CommercialDocumentPosition | One-to-Many | Positions referencing this product type |
+| UnitTransform / CurrencyTransform | One-to-Many | Conversion factors (core module) |
+| UnitOfMeasureConversion | One-to-Many | Product-specific UoM conversion factors |
+| ProductSupply | One-to-Many | Supplier sourcing records |
+| BillOfMaterials | One-to-One | Assembly structure (manufactured goods / kits) |
+| ServiceProfile | One-to-One | Billing model and SLA (services) |
+| ProductPassport | One-to-One | Digital product passport data |
+| CommercialDocumentPosition | One-to-Many | Positions referencing this product (FK field `product_type`) |
 | ProductCategoryAssignment | One-to-One | Accounting category (optional peer) |
+| StockMovement / ProductionOrder | One-to-Many | Stock ledger events and production orders (stock module) |
+
+### Entity: ProductVariant
+
+| Property | Value |
+|----------|-------|
+| **Source File** | `koalixcrm/products/models/product_variant.py` |
+| **Table** | `products_productvariant` |
+| **Module** | products |
+
+**Attributes:**
+
+| Attribute | Type | Constraints | Description |
+|-----------|------|-------------|-------------|
+| id | bigint | PK | |
+| workspace | FK → core.Workspace | NOT NULL | Tenant scope |
+| product | FK → Product | NOT NULL, CASCADE | Parent catalog product |
+| sku | varchar(200) | NOT NULL | Stock keeping unit |
+| gtin | varchar(14) | NULL | Global Trade Item Number |
+| mpn | varchar(200) | NULL | Manufacturer part number |
+| weight_kg | decimal(12,4) | NULL, >= 0 | Net weight |
+| dimensions_length_m / _width_m / _height_m | decimal(12,4) | NULL, >= 0 | Physical dimensions |
+| axis_values | jsonb | default={} | Variant axis values (e.g. color x size); placeholder until EAV axes |
+| tracking_mode | varchar(16) | NOT NULL, choices | NONE / BATCH / SERIAL — drives stock tracking granularity |
+| last_modification | datetime | auto_now | |
+| date_of_creation | datetime | auto_now_add | |
+
+**Relationships:**
+
+| Related Entity | Cardinality | Description |
+|---------------|-------------|-------------|
+| ProductPrice | One-to-Many | Variant-keyed prices (three-level precedence via PriceList) |
+| ProductAttribute* value tables | One-to-Many | Variant-level EAV attribute overrides |
+| Batch / SerialUnit (stock) | One-to-Many | Tracking granules per `tracking_mode` |
+| OnHandRecord / StockBalance (stock) | One-to-Many | On-hand projections |
+| StockMovement / StockReservation (stock) | One-to-Many | Ledger events and reservations |
+| GoodsReceiptLine / ProductionOrderComponent (stock) | One-to-Many | Inbound and assembly line items |
+
+### Entity: StockMovement
+
+| Property | Value |
+|----------|-------|
+| **Source File** | `koalixcrm/stock/models/stock_movement.py` |
+| **Table** | `stock_stockmovement` |
+| **Module** | stock |
+
+**Attributes:**
+
+| Attribute | Type | Constraints | Description |
+|-----------|------|-------------|-------------|
+| id | bigint | PK | |
+| workspace | FK → core.Workspace | NOT NULL | Tenant scope |
+| event_type | varchar | NOT NULL, choices | EPCIS-style event vocabulary |
+| business_step | varchar | NOT NULL, choices | Business process step (receiving, picking, etc.) |
+| occurred_at / recorded_at | datetime | NOT NULL | Event time vs. ledger write time |
+| source_location / destination_location | FK → Location | NULL | Movement endpoints |
+| product / variant | FK → products.Product / ProductVariant | NOT NULL | Moved item |
+| batch / serial_unit / handling_unit | FK → Batch / SerialUnit / HandlingUnit | NULL | Tracking detail |
+| parent_serial_unit / parent_batch | FK → SerialUnit / Batch | NULL | Assembly/disassembly parentage |
+| aggregation_group | uuid | NULL | Groups movements posted as one business action |
+| qty / uom | decimal / FK → core.Unit | NULL | Quantity for non-serialized movements |
+| reason_code | FK → MovementReasonCode | NULL | Standardized movement reason |
+| document_type / document_id | FK → ContentType / int | NULL | Generic reference to the triggering document |
+| owner_type / owner_party | varchar / FK → contacts.Party | NULL | Stock ownership (e.g. consignment) |
+| disposition | varchar | NULL, choices | Resulting stock disposition |
+| idempotency_key | uuid | NOT NULL, UNIQUE(workspace, idempotency_key) | Guarantees at-most-once posting |
+| compensates | FK → StockMovement | NULL | Compensation link (append-only ledger, no updates) |
+| created_by | FK → auth.User | NULL | Posting user |
+
+**Relationships:**
+
+| Related Entity | Cardinality | Description |
+|---------------|-------------|-------------|
+| Location | Many-to-One (x2) | Source and destination |
+| ProductVariant | Many-to-One | Moved variant |
+| Batch / SerialUnit / HandlingUnit | Many-to-One | Optional tracking granules |
+| StockMovement | Many-to-One (self) | Compensating movement |
+| GoodsReceiptLine | One-to-Many | Receipt lines posted into this movement |
+
+**Validation Rules:**
+
+- The ledger is append-only: corrections are posted as compensating movements
+  (`compensates` self-FK), never as updates or deletes.
+- `(workspace, idempotency_key)` is unique — repeated posting of the same business event
+  is rejected.
 
 ### Entity: Project
 
@@ -934,16 +1491,33 @@ additions and administrative-only changes are omitted.
 | core | `0005_workspace_and_access` | Structure | Introduces `Workspace`, `RoleInWorkspace`, and `WorkspaceSwitchEvent`; uses `CreateModelIfNotExists` for idempotent creation |
 | accounting | `0003_tax_and_category_assignments` | Structure + Data | Creates `TaxAccountAssignment` and `ProductCategoryAssignment`; copies existing account FKs from `core.Tax` and `products.ProductType` into the new tables; uses `run_before` to guarantee the copy runs before the source columns are dropped in peer migrations |
 | products | `0002_party_group_fks` | Structure | Replaces legacy `CustomerGroup` FKs on `Price` and `CustomerGroupTransform` with `PartyGroup` FKs |
+| products | `0007_rename_producttype_to_product` | Structure | Deletes the legacy hollow `Product` model (`crm_product`), then renames `ProductType` → `Product` via `SeparateDatabaseAndState` (state-level `RenameModel` + database-level `AlterModelTable` `crm_producttype` → `products_product`), and adds the `kind` field |
+| products | `0008_product_catalog_backbone` | Structure | Catalog backbone: renames `default_unit` → `base_uom` and `tax` → `tax_class`; adds `lifecycle_status`, `brand`, `manufacturer_party`, `country_of_origin`, `product_family`; creates `ProductFamily`, `ProductVariant`, `ProductTranslation`, `ProductMedia` |
+| products | `0010_classification_attributegroup_attributedefinition_and_more` | Structure | Creates the classification and EAV layer: `Classification`, `ClassificationNode`, `ProductClassification`, `AttributeGroup`, `AttributeDefinition`, `AttributeSet`/`AttributeSetGroup`, `AttributeSetDefault`, `AttributeValidationRule`, the six typed `ProductAttribute*` value tables, `ProductAttributeMapping`, `ProductAttributeMirror` |
+| products | `0011_stage3_pricing_sourcing_service_passport` | Structure | Phase 1 of the `ProductPrice` rekey: adds nullable `variant` FK alongside the legacy `product_type` FK; creates `PriceList`, `UnitOfMeasureConversion`, `ProductSupply`, `BillOfMaterials`/`BomItem`, `ServiceProfile`, `ProductPassport` |
+| products | `0012_backfill_productprice_variant` | Data | Phase 2 of the `ProductPrice` rekey: backfills `variant` from `product_type` (creating a default variant per product where needed) |
+| products | `0013_finalize_productprice_variant_rekey` | Structure | Phase 3 of the `ProductPrice` rekey: drops `product_type` and makes `variant` non-nullable — `ProductPrice` is now keyed to the sellable SKU |
+| products | `0014_productvariant_tracking_mode` | Structure | Adds `tracking_mode` (NONE/BATCH/SERIAL) to `ProductVariant` |
+| products | `0015_kit_mode` | Structure | Adds `kit_mode` (EXPLODE_ON_PICK/PREASSEMBLE) to `Product` |
+| products | `0016_bom_version` | Structure | Adds `version` to `BillOfMaterials` |
+| stock | `0001_initial` | Structure | Creates the stock backbone: `Location`, `HandlingUnit`, `Batch`, `SerialUnit`, `OnHandRecord`, `RetentionPolicy`, `StockMovement`, `StockBalance`, `StockReservation`, `RentalAssignment` |
+| stock | `0002_movementreasoncode_and_more` | Structure | Adds `MovementReasonCode` (global seed) and `MovementReasonCodeExtension`; extends `RetentionPolicy` with the `StockMovement` retention floor |
+| stock | `0003_stage6_assembly_lifecycle_scan_goodsreceipt` | Structure | Adds the process aggregates: `GoodsReceipt`/`GoodsReceiptLine`, `ProductionOrder`/`ProductionOrderComponent`, `BillOfMaterialsExplosion`; adds assembly/lifecycle fields (`parent_serial_unit`, `parent_batch`, `aggregation_group`) to `StockMovement` |
 
 ### Migration Patterns
 
 - **Optional-app FK relocation:** The `accounting` app uses assignment tables (`TaxAccountAssignment`,
   `ProductCategoryAssignment`) to hold accounting-specific FKs that previously lived on `core.Tax`
-  and `products.ProductType`. This allows the five fork-public apps to be deployed without
+  and `products.ProductType` (today `products.Product`). This allows the fork-public apps to be deployed without
   `koalixcrm.accounting` installed.
-- **Multi-step data migrations:** The contacts address restructure and party model introduction each
-  follow a three-phase pattern: (1) add new columns/tables, (2) backfill data, (3) drop old
+- **Multi-step data migrations:** The contacts address restructure, the party model introduction,
+  and the `ProductPrice` variant rekey (products `0011` → `0012` → `0013`) each follow a
+  three-phase pattern: (1) add new columns/tables, (2) backfill data, (3) drop old
   columns/tables. This keeps every intermediate migration state deployable.
+- **State/database split for renames:** The `ProductType` → `Product` rename (products `0007`)
+  uses `SeparateDatabaseAndState` so that Django's model state records a `RenameModel` while the
+  database only executes an `AlterModelTable` (`crm_producttype` → `products_product`) — no data
+  is copied and FKs from peer apps stay intact.
 
 ### Data Migrations
 
@@ -952,7 +1526,8 @@ additions and administrative-only changes are omitted.
 | `contacts.0005_backfill_party` | Creates `Party` rows from legacy `Customer` records | No |
 | `contacts.0008_backfill_party_billing_cycle` | Populates `Party.default_billing_cycle` from legacy `Customer.defaultCustomerBillingCycle` | No |
 | `contacts.0014_address_split_step2_data` | Migrates freeform address lines into structured `street`/`number`/`additional_address_line_*` fields | No |
-| `accounting.0003_tax_and_category_assignments` | Copies FK values from `core.Tax` and `products.ProductType` into `TaxAccountAssignment` / `ProductCategoryAssignment` | No |
+| `accounting.0003_tax_and_category_assignments` | Copies FK values from `core.Tax` and `products.ProductType` (now `Product`) into `TaxAccountAssignment` / `ProductCategoryAssignment` | No |
+| `products.0012_backfill_productprice_variant` | Populates `ProductPrice.variant` from the legacy `product_type` FK; additive only — the legacy column is dropped in `0013` | No |
 
 ---
 
@@ -964,22 +1539,40 @@ additions and administrative-only changes are omitted.
 | Party (contacts) | CustomerBillingCycle (contacts) | Party carries a default billing cycle | Same-app FK; no concern |
 | Contract (contracts) | Party (contacts) | Buyer and supplier of a contract | contracts → contacts FK; required peer |
 | CommercialDocument (contracts) | Party (contacts) | Counterpart of every commercial document | contracts → contacts FK; required peer |
-| CommercialDocumentPosition (contracts) | ProductType (products) | Line items reference a product type | contracts → products FK; optional peer (null allowed when products app absent) |
-| ProductType (products) | Tax (core) | Every product type carries a tax rate | products → core FK; required peer |
-| ProductType (products) | Unit (core) | Default unit of measure | products → core FK; required peer |
-| Price (products) | PartyGroup (contacts) | Price is scoped to a customer group | products → contacts FK; required peer |
-| CurrencyTransform (core) | ProductType (products) | Currency conversion is product-type specific | core → products FK; optional peer |
-| UnitTransform (core) | ProductType (products) | Unit conversion is product-type specific | core → products FK; optional peer |
+| CommercialDocumentPosition (contracts) | Product (products) | Line items reference a catalog product (FK field still named `product_type`) | contracts → products FK; optional peer (null allowed when products app absent) |
+| Product (products) | Tax (core) | Every product carries a tax class | products → core FK; required peer |
+| Product (products) | Unit (core) | Base unit of measure (`base_uom`) | products → core FK; required peer |
+| Product (products) | Party (contacts) | Manufacturer of the product (`manufacturer_party`) | products → contacts FK; nullable, SET_NULL |
+| Price (products) | PartyGroup (contacts) | Price is scoped to a customer group | products → contacts FK; nullable |
+| PriceList (products) | PartyGroup (contacts) | Price list targets a customer segment | products → contacts FK; nullable |
+| ProductSupply (products) | Party (contacts) | Supplier sourcing record per product | products → contacts FK; required |
+| ProductSupply (products) | Currency (core) | Purchase price currency | products → core FK; nullable |
+| AttributeDefinition (products) | Unit (core) | Measure-type attributes carry a unit | products → core FK; nullable |
+| ProductAttributeReference (products) | ContentType (django) | Generic reference attribute values | GenericForeignKey via `content_type`/`object_id` |
+| CurrencyTransform (core) | Product (products) | Currency conversion is product specific | core → products FK; optional peer |
+| UnitTransform (core) | Product (products) | Unit conversion is product specific | core → products FK; optional peer |
+| Batch / SerialUnit (stock) | ProductVariant (products) | Tracking granules are keyed to the sellable variant | stock → products FK; required peer |
+| OnHandRecord / StockBalance / StockReservation (stock) | ProductVariant (products) | All quantity projections and reservations are variant-keyed | stock → products FK; required peer |
+| StockMovement (stock) | Product / ProductVariant (products) | Movement ledger records both catalog product and variant | stock → products FK; required peer |
+| GoodsReceiptLine (stock) | ProductVariant (products) | Inbound receipt lines are variant-keyed | stock → products FK; required peer |
+| ProductionOrder (stock) | Product / BillOfMaterials (products) | Production orders build a product per its BOM | stock → products FK; required peer |
+| ProductionOrderComponent (stock) | BomItem / Product / ProductVariant (products) | Component consumption planned from BOM lines | stock → products FK; required peer |
+| BillOfMaterialsExplosion (stock) | BillOfMaterials / BomItem (products) | Cached recursive BOM explosion | stock → products FK; required peer |
+| GoodsReceipt (stock) | Party (contacts) | Supplier of an inbound delivery | stock → contacts FK; required |
+| RentalAssignment (stock) | Party (contacts) | Renter of a serialized unit | stock → contacts FK; required |
+| OnHandRecord / StockMovement (stock) | Party (contacts) | Owner party for consignment / third-party stock | stock → contacts FK; nullable |
+| StockMovement / StockReservation / RentalAssignment / ProductionOrder (stock) | ContentType (django) | Generic `document_type`/`document_id` reference to the triggering business document | GenericForeignKey pattern; avoids hard FK into contracts |
+| All stock entities except MovementReasonCode (stock) | Workspace (core) | Workspace-scoped via `WorkspaceScopedModel` | stock → core FK; required peer |
 | Booking (accounting) | Invoice (contracts) | Accounting bookings reference the source invoice | accounting → contracts FK; accounting is optional |
 | TaxAccountAssignment (accounting) | Tax (core) | Links accounting accounts to core tax rates | accounting → core optional-peer pattern |
-| ProductCategoryAssignment (accounting) | ProductType (products) | Links accounting categories to product types | accounting → products optional-peer pattern |
+| ProductCategoryAssignment (accounting) | Product (products) | Links accounting categories to catalog products | accounting → products optional-peer pattern |
 | AccountingPeriod (accounting) | DocumentTemplate (djangoUserExtension) | Balance sheet and P&L template references | accounting → djangoUserExtension FK |
 | Project (reporting) | Currency (core) | Reporting currency | reporting → core FK |
 | Project (reporting) | TemplateSet (djangoUserExtension) | Default PDF template set | reporting → djangoUserExtension FK |
 | HumanResource (reporting) | UserExtension (djangoUserExtension) | Links a project resource to a CRM user | reporting → djangoUserExtension FK |
 | PDFExportProcess (core) | DocumentTemplate (djangoUserExtension) | PDF job references the XSL template | core → djangoUserExtension FK |
 | Subscription (subscriptions) | Contract (contracts) | A subscription is backed by a contract | subscriptions → contracts FK; optional peer |
-| SubscriptionType (subscriptions) | ProductType (products) | A subscription type references a product type | subscriptions → products FK; optional peer |
+| SubscriptionType (subscriptions) | Product (products) | A subscription type references a catalog product (FK field `product_type`) | subscriptions → products FK; optional peer |
 | UserExtension (djangoUserExtension) | Currency (core) | User's default reporting currency | djangoUserExtension → core FK |
 
 ---
@@ -994,6 +1587,7 @@ additions and administrative-only changes are omitted.
 | contacts | `koalixcrm/contacts/models/` |
 | contracts | `koalixcrm/contracts/models/` |
 | products | `koalixcrm/products/models/` |
+| stock | `koalixcrm/stock/models/` |
 | accounting | `koalixcrm/accounting/models/` |
 | reporting | `koalixcrm/reporting/models/` |
 | subscriptions | `koalixcrm/subscriptions/models/` |
