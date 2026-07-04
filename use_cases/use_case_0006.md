@@ -1,7 +1,7 @@
 # UC-0006: Dienstleistungsprofil für ein SERVICE-Produkt anlegen und bearbeiten
 
 **ID:** UC-0006  
-**Bezug:** ADR-0007, REQ-0016  
+**Bezug:** [ADR-0007](../adr/0007-service-profile.md), [REQ-0016](../requirements/REQ-0016.md)  
 **Lizenzseite:** Open-Source-Backend (Datenmodell und API); Closed-Source-Frontend (UI)
 
 ---
@@ -19,6 +19,20 @@ Der Produktmanager öffnet die Produktdetailseite eines SERVICE-Produkts. Das Fr
 `kind = SERVICE` und zeigt den Dienstleistungsprofil-Abschnitt an.
 
 ## Hauptablauf
+
+### Hauptablauf (Übersicht)
+Der folgende Ablauf fasst den Standardfall aus Sicht des Produktmanagers zusammen#59; Details zu Schnittstellen zeigt das Sequenzdiagramm darunter.
+
+```mermaid
+flowchart TD
+    A["Produktdetailseite eines<br/>SERVICE-Produkts öffnen"] --> B{"ServiceProfile<br/>existiert bereits#63;"}
+    B -- "Nein" --> C["Abrechnungsmodell, Standarddauer,<br/>Leistungsbeschreibung, SLA-Referenz eingeben"]
+    C --> D["ServiceProfile anlegen"]
+    B -- "Ja" --> E["Bestehendes<br/>Dienstleistungsprofil bearbeiten"]
+    E --> F["ServiceProfile aktualisieren"]
+    D --> G["Aktualisiertes<br/>Dienstleistungsprofil anzeigen"]
+    F --> G
+```
 
 ```mermaid
 sequenceDiagram
@@ -80,3 +94,11 @@ sequenceDiagram
 ### BAC-3: Gleichbehandlung in Produktliste
 - [ ] Die Produktlistenseite zeigt SERVICE-Produkte in derselben Liste wie andere Produktarten.
 - [ ] Der Filter `kind = SERVICE` in der Produktliste liefert ausschließlich Dienstleistungen.
+
+---
+
+## Referenzen
+- [ADR-0007](../adr/0007-service-profile.md) — `ServiceProfile`-Modell
+- [ADR-0019](../adr/0019-product-kind-invariants.md) — `kind`-Gating: `ServiceProfile` ausschließlich für `kind = SERVICE`
+- [REQ-0016](../requirements/REQ-0016.md) — governing requirement
+- [Glossar](../glossar.md) — Begriffsdefinitionen (`ServiceProfile`, `kind`)

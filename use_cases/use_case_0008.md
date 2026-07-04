@@ -1,7 +1,7 @@
 # UC-0008: Komponenten-Bestandssuche mit Stellplatz-Anzeige
 
 **ID:** UC-0008
-**Bezug:** ADR-0003, ADR-0009, ADR-0010, ADR-0011, ADR-0021
+**Bezug:** [ADR-0003](../adr/0003-product-catalog-backbone.md), [ADR-0009](../adr/0009-stock-domain-backbone.md), [ADR-0010](../adr/0010-stock-states-and-reservations.md), [ADR-0011](../adr/0011-stock-movements-and-event-log.md), [ADR-0021](../adr/0021-produkt-variantengranularitaet-topologie-schluesselung-attributkaskade.md)
 **Lizenzseite:** Open-Source-Backend (Datenmodell, Suchendpunkt, Aggregationslogik und API); Closed-Source-Frontend (Suchmaske, Breadcrumb-Darstellung, Filter-UI)
 
 **Warum:** Lagermitarbeiter verlieren Zeit bei der manuellen Suche nach Komponenten, wenn Bestandsdaten und Standortpfade nicht in einer einzigen Abfrage abrufbar sind. Ohne einen strukturierten Suchendpunkt, der `OnHandRecord`-Aggregate und den vollständigen Standortpfad zusammenführt, entstehen Kommissionierfehler durch veraltete oder falsch lokalisierte Bestandsinformationen.
@@ -16,8 +16,8 @@
 ## Vorbedingungen
 
 - Der Lagermitarbeiter ist authentifiziert und hat einen aktiven Workspace.
-- Mindestens ein `Product` mit mindestens einer `ProductVariant` existiert im aktiven Workspace; die Variante trägt zugehörige `OnHandRecord`-Zeilen und `Location`-Zuordnungen (ADR-0021: „`OnHandRecord` FK → `ProductVariant` ist autoritativer Schlüssel").
-- Die `Location`-Hierarchie des Workspace enthält die vier Ebenen Regal (`RACK`), Fach (`SHELF`), Ebene (`AISLE` oder angepasster Typ je Konfiguration) und Position (`BIN`) gemäß ADR-0009: „n-stufige Standorthierarchie mit `location_type`-Enum".
+- Mindestens ein `Product` mit mindestens einer `ProductVariant` existiert im aktiven Workspace; die Variante trägt zugehörige `OnHandRecord`-Zeilen und `Location`-Zuordnungen ([ADR-0021](../adr/0021-produkt-variantengranularitaet-topologie-schluesselung-attributkaskade.md): „`OnHandRecord` FK → `ProductVariant` ist autoritativer Schlüssel").
+- Die `Location`-Hierarchie des Workspace enthält die vier Ebenen Regal (`RACK`), Fach (`SHELF`), Ebene (`AISLE` oder angepasster Typ je Konfiguration) und Position (`BIN`) gemäß [ADR-0009](../adr/0009-stock-domain-backbone.md): „n-stufige Standorthierarchie mit `location_type`-Enum".
 
 ## Auslöser
 
@@ -27,6 +27,18 @@ Der Lagermitarbeiter benötigt eine Komponente und sucht ihren Lagerort im Syste
 
 ## Hauptablauf
 
+### Hauptablauf (Übersicht)
+
+Der Happy Path als Geschäftsablauf, ohne Anmeldung und ohne API-Details:
+
+```mermaid
+flowchart TD
+    A[Suchbegriff und/oder kind-Filter eingeben] --> B[ProductVariant- und OnHandRecord-Treffer<br/>im Workspace suchen]
+    B --> C[Standortpfad je Treffer traversieren:<br/>Regal → Fach → Ebene → Position]
+    C --> D[Trefferliste mit qty_on_hand<br/>und Breadcrumb-Array aggregieren]
+    D --> E[Trefferliste mit Variantenkennung<br/>und Breadcrumbs anzeigen]
+```
+
 ```mermaid
 sequenceDiagram
     actor LM as "Lagermitarbeiter"
@@ -34,11 +46,11 @@ sequenceDiagram
     participant BE as "Backend<br/>(DRF)"
     participant DB as "Datenbank"
 
-    LM->>FE: Suchbegriff (Name oder kind) eingeben;<br/>optional: Workspace-Filter,<br/>Verfügbarkeitsfilter, Chargenfilter setzen
-    FE->>BE: GET /api/stock/components/search/<br/>?q=&lt;Begriff&gt;&kind=&lt;Wert&gt;&include_zero_qty=&lt;bool&gt;<br/>&batch=&lt;id&gt;
-    BE->>DB: Product-Suche nach name/translation und kind;<br/>Join auf ProductVariant + OnHandRecord + Batch<br/>(wenn Filter) (Workspace-Scope via<br/>WorkspaceScopedViewSetMixin, ADR-0001)
+    LM->>FE: Suchbegriff (Name oder kind) eingeben#59;<br/>optional: Workspace-Filter,<br/>Verfügbarkeitsfilter, Chargenfilter setzen
+    FE->>BE: GET /api/stock/components/search/<br/>?q=#lt;Begriff#gt;&kind=#lt;Wert#gt;&include_zero_qty=#lt;bool#gt;<br/>&batch=#lt;id#gt;
+    BE->>DB: Product-Suche nach name/translation und kind#59;<br/>Join auf ProductVariant + OnHandRecord + Batch<br/>(wenn Filter) (Workspace-Scope via<br/>WorkspaceScopedViewSetMixin, ADR-0001)
     DB-->>BE: ProductVariant-Treffer je Product mit<br/>qty_on_hand-Summe und Location-FK je OnHandRecord-Zeile<br/>(ADR-0021: OnHandRecord FK → ProductVariant)
-    BE->>DB: Für jeden Treffer: vollständigen Standortpfad<br/>nach oben traversieren (rekursiver CTE<br/>bis zum Root-Knoten; ADR-0009)
+    BE->>DB: Für jeden Treffer: vollständigen Standortpfad<br/>nach oben traversieren (rekursiver CTE<br/>bis zum Root-Knoten#59; ADR-0009)
     DB-->>BE: Pfadliste je OnHandRecord:<br/>Regel → Fach → Ebene → Position (Breadcrumb-Sequenz)
     BE-->>FE: 200 OK — Trefferliste:<br/>Produkt-ID, Name, kind,<br/>je Treffer: ProductVariant-ID + sku,<br/>je Standort: qty_on_hand + Breadcrumb-Array<br/>[{type: RACK, name: "R03"},<br/>{type: SHELF, name: "S02"},<br/>…, {type: BIN, name: "B04"}]<br/>Standorte sortiert nach qty_on_hand absteigend
     FE->>LM: Trefferliste mit Variantenkennung und Breadcrumbs anzeigen
@@ -54,7 +66,7 @@ sequenceDiagram
 
 ## Alternativablauf B: Mehrere Standorte für dieselbe ProductVariant
 
-- Das Backend findet mehrere `OnHandRecord`-Zeilen für dieselbe `ProductVariant` an verschiedenen `Location`-Knoten (ADR-0021: `OnHandRecord` FK → `ProductVariant`).
+- Das Backend findet mehrere `OnHandRecord`-Zeilen für dieselbe `ProductVariant` an verschiedenen `Location`-Knoten ([ADR-0021](../adr/0021-produkt-variantengranularitaet-topologie-schluesselung-attributkaskade.md): `OnHandRecord` FK → `ProductVariant`).
 - Das Backend gibt alle Standorte als separate Einträge in der Trefferliste zurück, jeweils mit eigenem Breadcrumb, eigener `qty_on_hand`-Menge und der `ProductVariant`-Kennung (`sku`).
 - Die Einträge sind nach `qty_on_hand` absteigend sortiert, sodass der Standort mit dem höchsten verfügbaren Bestand zuerst erscheint.
 - Das Frontend zeigt alle Standorte der Variante untereinander.
@@ -85,13 +97,13 @@ sequenceDiagram
 
 ### BAC-1: Suche nach Produktname
 
-- [ ] Eine Suchanfrage mit einem Teilstring des Produktnamens liefert alle `Product`-Einträge, deren `ProductTranslation.name` den Teilstring enthält (ADR-0003: „`ProductTranslation` speichert mehrsprachige Bezeichnung").
+- [ ] Eine Suchanfrage mit einem Teilstring des Produktnamens liefert alle `Product`-Einträge, deren `ProductTranslation.name` den Teilstring enthält ([ADR-0003](../adr/0003-product-catalog-backbone.md): „`ProductTranslation` speichert mehrsprachige Bezeichnung").
 - [ ] Die Suche ist unabhängig von Groß- und Kleinschreibung.
 - [ ] Treffer aus anderen Workspaces erscheinen nicht in der Antwort.
 
 ### BAC-2: Suche nach kind
 
-- [ ] Eine Suchanfrage mit `kind=<Wert>` liefert ausschließlich `Product`-Einträge, deren `kind`-Feld den angegebenen Wert trägt (ADR-0003: „Das `kind`-Enum klassifiziert das Produkt als `SERVICE`, `TRADING_GOOD`, `MANUFACTURED_GOOD`, `KIT` oder `RAW_MATERIAL`").
+- [ ] Eine Suchanfrage mit `kind=<Wert>` liefert ausschließlich `Product`-Einträge, deren `kind`-Feld den angegebenen Wert trägt ([ADR-0003](../adr/0003-product-catalog-backbone.md): „Das `kind`-Enum klassifiziert das Produkt als `SERVICE`, `TRADING_GOOD`, `MANUFACTURED_GOOD`, `KIT` oder `RAW_MATERIAL`").
 - [ ] Name-Suche und `kind`-Filter lassen sich kombinieren; das Backend wendet beide Bedingungen mit AND-Semantik an.
 
 ### BAC-3: Vollständiger Standortpfad über alle 4 Ebenen
@@ -101,7 +113,7 @@ sequenceDiagram
 
 ### BAC-4: Mehrere Standorte gleichzeitig
 
-- [ ] Existieren für eine `ProductVariant` `n > 1` `OnHandRecord`-Zeilen an verschiedenen `Location`-Knoten (ADR-0021: `OnHandRecord` FK → `ProductVariant` ist autoritativer Schlüssel), enthält die Antwort `n` Standorteinträge für diese Variante, jeder mit eigenem Breadcrumb, eigener Menge und der `ProductVariant`-Kennung (`sku`).
+- [ ] Existieren für eine `ProductVariant` `n > 1` `OnHandRecord`-Zeilen an verschiedenen `Location`-Knoten ([ADR-0021](../adr/0021-produkt-variantengranularitaet-topologie-schluesselung-attributkaskade.md): `OnHandRecord` FK → `ProductVariant` ist autoritativer Schlüssel), enthält die Antwort `n` Standorteinträge für diese Variante, jeder mit eigenem Breadcrumb, eigener Menge und der `ProductVariant`-Kennung (`sku`).
 - [ ] Die Standorteinträge für dieselbe `ProductVariant` sind nach `qty_on_hand` absteigend sortiert.
 - [ ] Trägt ein `Product` mehrere `ProductVariant`-Einträge, weist jeder Standorteintrag eindeutig aus, zu welcher Variante er gehört.
 
@@ -117,16 +129,28 @@ sequenceDiagram
 
 ### BAC-7: Workspace-Scope-Trennung
 
-- [ ] Die Suchanfrage liefert ausschließlich `OnHandRecord`-, `ProductVariant`- und `Product`-Einträge des aktiven Workspace (ADR-0001: „Tenant-owned data inherits `WorkspaceScopedModel` and is filtered by `request.active_workspace`").
+- [ ] Die Suchanfrage liefert ausschließlich `OnHandRecord`-, `ProductVariant`- und `Product`-Einträge des aktiven Workspace ([ADR-0001](../adr/0001-contact-and-party-data-model.md): „Tenant-owned data inherits `WorkspaceScopedModel` and is filtered by `request.active_workspace`").
 - [ ] Ein Lagermitarbeiter ohne Leserecht auf einen anderen Workspace erhält keinen Treffer aus diesem Workspace, auch wenn die gesuchte Komponente dort vorhanden ist.
 
 ---
 
 ## Architectural gaps surfaced
 
-Es bestehen keine architektonischen Lücken über die bereits in ADR-0009 angekündigte Erweiterung des `location_type`-Enums (`LAYER`-Amendment) hinaus. Dieses ADR legt fest, dass die `Location`-Hierarchie durch einen einzelnen rekursiven Selbstverweis n-stufig abgebildet wird; die genaue Enum-Benennung der Zwischenebenen hat keinen Einfluss auf die Suchlogik dieses Use Cases, da der Breadcrumb-Pfad strukturell traversiert wird.
+Es bestehen keine architektonischen Lücken über die bereits in [ADR-0009](../adr/0009-stock-domain-backbone.md) angekündigte Erweiterung des `location_type`-Enums (`LAYER`-Amendment) hinaus. Dieses ADR legt fest, dass die `Location`-Hierarchie durch einen einzelnen rekursiven Selbstverweis n-stufig abgebildet wird; die genaue Enum-Benennung der Zwischenebenen hat keinen Einfluss auf die Suchlogik dieses Use Cases, da der Breadcrumb-Pfad strukturell traversiert wird.
+
+---
+
+## Referenzen
+- [ADR-0003](../adr/0003-product-catalog-backbone.md) — `ProductTranslation`, `kind`-Enum
+- [ADR-0009](../adr/0009-stock-domain-backbone.md) — n-stufige `Location`-Hierarchie
+- [ADR-0010](../adr/0010-stock-states-and-reservations.md) — `OnHandRecord`-Aggregation
+- [ADR-0011](../adr/0011-stock-movements-and-event-log.md) — Ereignis-Log-Kontext
+- [ADR-0021](../adr/0021-produkt-variantengranularitaet-topologie-schluesselung-attributkaskade.md) — `OnHandRecord` FK → `ProductVariant` als autoritativer Schlüssel
+- [ADR-0019](../adr/0019-product-kind-invariants.md) — `kind`-Filter (z. B. `kind=RAW_MATERIAL`)
+- [ADR-0001](../adr/0001-contact-and-party-data-model.md) — Workspace-Scoping (`WorkspaceScopedModel`)
+- [Glossar](../glossar.md) — Begriffsdefinitionen (`ProductVariant`, `kind`, `ProductTranslation`)
 
 ---
 
 ## Änderungsprotokoll
-- 2026-07-04: Anpassung an ADR-0021: Preis-/Bestands-/GTIN-Schlüsselung auf ProductVariant.
+- 2026-07-04: Anpassung an [ADR-0021](../adr/0021-produkt-variantengranularitaet-topologie-schluesselung-attributkaskade.md): Preis-/Bestands-/GTIN-Schlüsselung auf ProductVariant.

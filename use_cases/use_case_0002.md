@@ -1,7 +1,7 @@
 # UC-0002: Erweiterbare Attribute für ein Produkt pflegen
 
 **ID:** UC-0002  
-**Bezug:** ADR-0004, REQ-0009, REQ-0010  
+**Bezug:** [ADR-0004](../adr/0004-classification-and-extensible-attributes.md), [REQ-0009](../requirements/REQ-0009.md), [REQ-0010](../requirements/REQ-0010.md)  
 **Lizenzseite:** Open-Source-Backend (Datenmodell und API); Closed-Source-Frontend (dynamisches Formular-Rendering)
 
 ---
@@ -11,7 +11,7 @@
 - **System:** KoalixCRM-Backend (DRF), KoalixCRM-Frontend (Next.js/Refine)
 
 ## Vorbedingungen
-- Das `Product` existiert im aktiven Workspace (UC-0001 abgeschlossen).
+- Das `Product` existiert im aktiven Workspace ([UC-0001](use_case_0001.md) abgeschlossen).
 - Das `Product` ist unter mindestens einem `ClassificationNode` eingehängt, dem ein `AttributeSet` zugeordnet ist.
 - Der Produktmanager hat Schreibrecht auf Attributwerte.
 
@@ -19,6 +19,20 @@
 Der Produktmanager öffnet die Produktdetailseite und navigiert zum Attributbereich.
 
 ## Hauptablauf
+
+### Hauptablauf (Übersicht)
+Der folgende Ablauf fasst den Standardfall aus Sicht des Produktmanagers zusammen#59; Details zu Schnittstellen zeigt das Sequenzdiagramm darunter.
+
+```mermaid
+flowchart TD
+    A["Attributbereich öffnen"] --> B["AttributeSet und<br/>bestehende Attributwerte laden"]
+    B --> C["Dynamisches Attributformular anzeigen<br/>(vorausgefüllt)"]
+    C --> D["Attributwerte eingeben oder ändern"]
+    D --> E["Werte speichern"]
+    E --> F{"Validierung bestanden#63;"}
+    F -- "Ja" --> G["attribute_mirror aktualisieren#59;<br/>Erfolgsmeldung anzeigen"]
+    F -- "Nein" --> D
+```
 
 ```mermaid
 sequenceDiagram
@@ -87,3 +101,12 @@ sequenceDiagram
 ### BAC-3: Fehlerdarstellung
 - [ ] Eine HTTP-400-Antwort wegen Validierungsfehler erzeugt eine inline Fehlermeldung am betreffenden Feld.
 - [ ] Die Fehlermeldung nennt die verletzte Regel (z. B. „Wert muss kleiner als 100 sein").
+
+---
+
+## Referenzen
+- [ADR-0004](../adr/0004-classification-and-extensible-attributes.md) — `AttributeSet`/`AttributeGroup`/`AttributeDefinition`-Modell
+- [ADR-0019](../adr/0019-product-kind-invariants.md) — `kind`-Gating (AttributeSet-Bindung variiert nach `ClassificationNode` und `kind`)
+- [REQ-0009](../requirements/REQ-0009.md), [REQ-0010](../requirements/REQ-0010.md) — governing requirements
+- [UC-0001](use_case_0001.md) — Vorbedingung: das `Product` muss bereits angelegt sein
+- [Glossar](../glossar.md) — Begriffsdefinitionen (`AttributeDefinition`, `AttributeSet`, `AttributeGroup`, `kind`)

@@ -1,7 +1,7 @@
 # UC-0010: Wareneingang mit Lieferschein und Lagerplatzvorschlag
 
 **ID:** UC-0010
-**Bezug:** ADR-0002, ADR-0003, ADR-0009, ADR-0011, ADR-0012, ADR-0021
+**Bezug:** [ADR-0002](../adr/0002-admin-ui-framework.md), [ADR-0003](../adr/0003-product-catalog-backbone.md), [ADR-0009](../adr/0009-stock-domain-backbone.md), [ADR-0011](../adr/0011-stock-movements-and-event-log.md), [ADR-0012](../adr/0012-lifetime-batch-lot-serial-tracking.md), [ADR-0021](../adr/0021-produkt-variantengranularitaet-topologie-schluesselung-attributkaskade.md)
 **Lizenzseite:** Open-Source-Backend (Datenmodell, GoodsReceipt-Aggregat, Lagerplatzvorschlag-Logik, Bewegungsbuchung und API); Closed-Source-Frontend (Lieferschein-Ingestion-UI, Scan-Maske, Lagerplatz-Override-Dialog)
 
 **Warum:** Ohne eine strukturierte Lieferschein-Erfassung mit positionsgenauer Scan-Bestätigung und einem systemgestützten Lagerplatzvorschlag entstehen fehlerhafte Einlagerungen: Ware landet auf falschen Stellplätzen, Chargen werden nicht erfasst und `StockMovement`-Events fehlen im Audit-Trail. Die Verknüpfung jeder Buchung mit einem `GoodsReceipt`-Dokument stellt die Rückverfolgbarkeit vom physischen Eingang bis zum Lagerort sicher.
@@ -18,7 +18,7 @@
 - Der Benutzer ist authentifiziert und hat einen aktiven Workspace.
 - Eine Lieferung mit Lieferschein ist physisch eingetroffen.
 - Der Lieferschein-Payload liegt als strukturiertes Datenobjekt vor (Format und Quelle sind Integrationsdetails und nicht Teil dieses Use Cases).
-- Alle im Lieferschein aufgeführten Produkte existieren als `ProductVariant` im Produktkatalog des aktiven Workspace (ADR-0021: Wareneingangspositionen referenzieren die verkaufbare Einheit, nicht das abstrakte `Product`).
+- Alle im Lieferschein aufgeführten Produkte existieren als `ProductVariant` im Produktkatalog des aktiven Workspace ([ADR-0021](../adr/0021-produkt-variantengranularitaet-topologie-schluesselung-attributkaskade.md): Wareneingangspositionen referenzieren die verkaufbare Einheit, nicht das abstrakte `Product`).
 
 ## Auslöser
 
@@ -27,6 +27,22 @@ Eine Lieferung mit Lieferschein trifft ein; der Wareneingangs-Verantwortliche er
 ---
 
 ## Hauptablauf
+
+### Hauptablauf (Übersicht)
+
+Der Happy Path als Geschäftsablauf, ohne Anmeldung und ohne API-Details:
+
+```mermaid
+flowchart TD
+    A[Lieferschein-Payload übermitteln] --> B[GoodsReceipt mit Positionen anlegen<br/>#40;IN_PROGRESS#41;]
+    B --> C[Produkt der Position scannen]
+    C --> D[Lagerplatz vorschlagen:<br/>gleiche ProductVariant/Charge bevorzugt]
+    D --> E[Lagerplatz bestätigen oder anderen wählen]
+    E --> F[StockMovement #quot;receiving#quot; buchen#59;<br/>Position auf CONFIRMED setzen]
+    F --> G{Weitere offene<br/>Positionen?}
+    G -->|Ja| C
+    G -->|Nein| H[GoodsReceipt auf COMPLETED setzen]
+```
 
 ```mermaid
 sequenceDiagram
@@ -38,24 +54,24 @@ sequenceDiagram
     WV->>FE: Lieferschein-Payload übermitteln<br/>(strukturierte Positionsliste)
     FE->>BE: POST /api/stock/goods-receipts/<br/>{supplier?, positions: [{product_variant_id, qty_expected,<br/>uom, batch_number?, expiry_date?}, …]}
     BE->>BE: Alle product_variant_id gegen Workspace-Katalog<br/>validieren (ADR-0021: ProductVariant + GTIN)
-    BE->>DB: INSERT GoodsReceipt {status=IN_PROGRESS,<br/>Workspace-scoped};<br/>INSERT GoodsReceiptPosition je Position
+    BE->>DB: INSERT GoodsReceipt {status=IN_PROGRESS,<br/>Workspace-scoped}#59;<br/>INSERT GoodsReceiptPosition je Position
     DB-->>BE: GoodsReceipt-ID
     BE-->>FE: 201 Created — GoodsReceipt<br/>{id, status=IN_PROGRESS, positions[]}
-    FE->>WV: GoodsReceipt anzeigen;<br/>Positionen-Liste mit Soll-Mengen
+    FE->>WV: GoodsReceipt anzeigen#59;<br/>Positionen-Liste mit Soll-Mengen
 
     loop Für jede Position
         WV->>FE: Produkt-QR-Code der gelieferten Einheit scannen
-        FE->>BE: POST /api/stock/scan/<br/>{identifier: "&lt;GTIN&gt;", identifier_type: "AUTO"}
-        BE->>BE: Scan gegen ProductVariant.gtin auflösen<br/>(ADR-0021);<br/>GoodsReceiptPosition-Treffer prüfen<br/>(product_variant_id + GoodsReceipt-ID)
-        BE->>DB: Lagerplatzvorschlag berechnen:<br/>1. Stellplatz mit gleicher ProductVariant + Charge bevorzugen;<br/>2. sonst: freier Stellplatz nächster passender Größe<br/>(ADR-0009: Location-Hierarchie + is_active)
+        FE->>BE: POST /api/stock/scan/<br/>{identifier: "#lt;GTIN#gt;", identifier_type: "AUTO"}
+        BE->>BE: Scan gegen ProductVariant.gtin auflösen<br/>(ADR-0021)#59;<br/>GoodsReceiptPosition-Treffer prüfen<br/>(product_variant_id + GoodsReceipt-ID)
+        BE->>DB: Lagerplatzvorschlag berechnen:<br/>1. Stellplatz mit gleicher ProductVariant + Charge bevorzugen#59;<br/>2. sonst: freier Stellplatz nächster passender Größe<br/>(ADR-0009: Location-Hierarchie + is_active)
         DB-->>BE: Vorgeschlagener Location-Knoten + Breadcrumb
         BE-->>FE: Scan-Treffer: ProductVariant bestätigt,<br/>Lagerplatzvorschlag (Location-ID + Breadcrumb)
         FE->>WV: Produktvariante + Lagerplatz-Vorschlag anzeigen
         WV->>FE: Vorgeschlagenen Lagerplatz bestätigen<br/>ODER anderen Lagerplatz auswählen
-        FE->>BE: POST /api/stock/movements/<br/>{event_type: OBJECT_EVENT,<br/>business_step: receiving,<br/>product_variant: &lt;id&gt;, batch?: &lt;id_oder_neu&gt;,<br/>destination_location: &lt;location_id&gt;,<br/>qty: &lt;qty_expected&gt;,<br/>document_type: GoodsReceipt,<br/>document_id: &lt;GoodsReceipt.id&gt;,<br/>idempotency_key: &lt;UUID&gt;}
-        BE->>DB: INSERT StockMovement<br/>{business_step=receiving,<br/>product_variant=&lt;id&gt;,<br/>destination_location=&lt;gewählter Lagerplatz&gt;,<br/>document_id=GoodsReceipt.id,<br/>occurred_at=jetzt};<br/>synchrones UPDATE StockBalance<br/>(qty_on_hand += qty_expected; ADR-0011);<br/>ggf. INSERT Batch bei neuem Chargeneintrag<br/>(ADR-0012);<br/>GoodsReceiptPosition.status = CONFIRMED
+        FE->>BE: POST /api/stock/movements/<br/>{event_type: OBJECT_EVENT,<br/>business_step: receiving,<br/>product_variant: #lt;id#gt;, batch?: #lt;id_oder_neu#gt;,<br/>destination_location: #lt;location_id#gt;,<br/>qty: #lt;qty_expected#gt;,<br/>document_type: GoodsReceipt,<br/>document_id: #lt;GoodsReceipt.id#gt;,<br/>idempotency_key: #lt;UUID#gt;}
+        BE->>DB: INSERT StockMovement<br/>{business_step=receiving,<br/>product_variant=#lt;id#gt;,<br/>destination_location=#lt;gewählter Lagerplatz#gt;,<br/>document_id=GoodsReceipt.id,<br/>occurred_at=jetzt}#59;<br/>synchrones UPDATE StockBalance<br/>(qty_on_hand += qty_expected#59; ADR-0011)#59;<br/>ggf. INSERT Batch bei neuem Chargeneintrag<br/>(ADR-0012)#59;<br/>GoodsReceiptPosition.status = CONFIRMED
         DB-->>BE: StockMovement-ID
-        BE-->>FE: 201 Created — Buchung bestätigt;<br/>GoodsReceiptPosition-Status aktualisiert
+        BE-->>FE: 201 Created — Buchung bestätigt#59;<br/>GoodsReceiptPosition-Status aktualisiert
         FE->>WV: Position als eingebucht markieren
     end
 
@@ -75,7 +91,7 @@ sequenceDiagram
 
 ## Alternativablauf B: Produktvariante nicht im Katalog
 
-- Das Backend findet für die im Lieferschein-Payload angegebene `product_variant_id` keinen passenden `ProductVariant`-Eintrag im aktiven Workspace (ADR-0021).
+- Das Backend findet für die im Lieferschein-Payload angegebene `product_variant_id` keinen passenden `ProductVariant`-Eintrag im aktiven Workspace ([ADR-0021](../adr/0021-produkt-variantengranularitaet-topologie-schluesselung-attributkaskade.md)).
 - Das Backend antwortet auf die initiale `POST /api/stock/goods-receipts/`-Anfrage mit HTTP 422 und benennt die fehlende `product_variant_id`.
 - Das Backend legt kein `GoodsReceipt`-Aggregat an; der Benutzer muss den fehlenden Katalogeintrag zuerst anlegen.
 
@@ -106,8 +122,8 @@ sequenceDiagram
 - Ein `GoodsReceipt`-Aggregat mit Status `COMPLETED` (oder `IN_PROGRESS` bei Teillieferung) existiert im aktiven Workspace.
 - Für jede bestätigte `GoodsReceiptPosition` existiert mindestens ein unveränderlicher `StockMovement`-Eintrag mit `business_step = receiving` und `document_id = GoodsReceipt.id`.
 - `StockBalance.qty_on_hand` am jeweiligen Einlagerungsstellplatz spiegelt die eingebuchte Menge wider.
-- Für jede neu erfasste Charge existiert ein `Batch`-Datensatz mit den übermittelten Feldern (ADR-0012: „Chargennummer, Ablaufdatum, Mindesthaltbarkeitsdatum, Produktionsdatum").
-- Kein `StockMovement`-Eintrag dieses Use Cases ist nach dem Schreiben veränderbar (ADR-0011: „Zeilen werden nach dem Schreiben nicht mehr geändert oder gelöscht").
+- Für jede neu erfasste Charge existiert ein `Batch`-Datensatz mit den übermittelten Feldern ([ADR-0012](../adr/0012-lifetime-batch-lot-serial-tracking.md): „Chargennummer, Ablaufdatum, Mindesthaltbarkeitsdatum, Produktionsdatum").
+- Kein `StockMovement`-Eintrag dieses Use Cases ist nach dem Schreiben veränderbar ([ADR-0011](../adr/0011-stock-movements-and-event-log.md): „Zeilen werden nach dem Schreiben nicht mehr geändert oder gelöscht").
 
 ---
 
@@ -115,7 +131,7 @@ sequenceDiagram
 
 ### BAC-1: Lieferschein-Ingestion über REST
 
-- [ ] Das Backend nimmt einen strukturierten Lieferschein-Payload als JSON-Objekt entgegen und legt daraus ein `GoodsReceipt`-Aggregat mit Status `IN_PROGRESS` an (ADR-0002: „Django keeps the existing DRF endpoints in each `*_api_py/` package and serves them under `/api/`").
+- [ ] Das Backend nimmt einen strukturierten Lieferschein-Payload als JSON-Objekt entgegen und legt daraus ein `GoodsReceipt`-Aggregat mit Status `IN_PROGRESS` an ([ADR-0002](../adr/0002-admin-ui-framework.md): „Django keeps the existing DRF endpoints in each `*_api_py/` package and serves them under `/api/`").
 - [ ] Der Endpunkt akzeptiert ausschließlich strukturierte Positionsdaten (`ProductVariant`-ID, Soll-Menge, Maßeinheit, optional Charge); Bild- oder OCR-Daten sind nicht Teil des Payload-Schemas.
 
 ### BAC-2: GoodsReceipt-Statusübergänge
@@ -126,12 +142,12 @@ sequenceDiagram
 
 ### BAC-3: Scan-Auflösung pro Position
 
-- [ ] Das Backend löst den gescannten GTIN-Barcode gegen `ProductVariant.gtin` auf und ordnet den Treffer der passenden offenen `GoodsReceiptPosition` zu (ADR-0021: „`gtin` | `ProductVariant` | GTIN ist die handelsseitige Einheiten-ID").
+- [ ] Das Backend löst den gescannten GTIN-Barcode gegen `ProductVariant.gtin` auf und ordnet den Treffer der passenden offenen `GoodsReceiptPosition` zu ([ADR-0021](../adr/0021-produkt-variantengranularitaet-topologie-schluesselung-attributkaskade.md): „`gtin` | `ProductVariant` | GTIN ist die handelsseitige Einheiten-ID").
 - [ ] Das Backend antwortet mit HTTP 422 und einer Fehlerbeschreibung, wenn der Scan keine `ProductVariant` einer offenen Position trifft.
 
 ### BAC-4: Lagerplatzvorschlag-Regel
 
-- [ ] Das Backend schlägt als ersten Kandidaten einen `Location`-Knoten vor, der bereits `OnHandRecord`-Zeilen für dieselbe `ProductVariant` und dieselbe Charge trägt und dessen `is_active = true` gilt (ADR-0021: `OnHandRecord` FK → `ProductVariant`).
+- [ ] Das Backend schlägt als ersten Kandidaten einen `Location`-Knoten vor, der bereits `OnHandRecord`-Zeilen für dieselbe `ProductVariant` und dieselbe Charge trägt und dessen `is_active = true` gilt ([ADR-0021](../adr/0021-produkt-variantengranularitaet-topologie-schluesselung-attributkaskade.md): `OnHandRecord` FK → `ProductVariant`).
 - [ ] Existiert kein solcher Stellplatz, schlägt das Backend den nächsten freien Stellplatz mit passender Kapazität vor (Kriterium: `is_active = true`, kein bestehender `OnHandRecord` mit `qty_on_hand > 0` für eine andere `ProductVariant`, gleiche Hierarchieebene `BIN`).
 - [ ] Das Backend liefert den Vorschlag als `Location`-ID mit vollständigem Breadcrumb-Array.
 
@@ -142,17 +158,17 @@ sequenceDiagram
 
 ### BAC-6: Buchung pro Position als eigener StockMovement
 
-- [ ] Für jede bestätigte `GoodsReceiptPosition` schreibt das Backend einen eigenen `StockMovement`-Eintrag mit `event_type = OBJECT_EVENT`, `business_step = receiving` (ADR-0011: `business_step`-Wertebereich enthält `receiving`).
-- [ ] Das Backend aktualisiert `StockBalance.qty_on_hand` am Einlagerungsstellplatz synchron im selben Transaktion (ADR-0011: „`StockMovement`-Events mit `qty != null` aktualisieren `StockBalance`-Felder synchron im selben Datenbank-Transaktion").
+- [ ] Für jede bestätigte `GoodsReceiptPosition` schreibt das Backend einen eigenen `StockMovement`-Eintrag mit `event_type = OBJECT_EVENT`, `business_step = receiving` ([ADR-0011](../adr/0011-stock-movements-and-event-log.md): `business_step`-Wertebereich enthält `receiving`).
+- [ ] Das Backend aktualisiert `StockBalance.qty_on_hand` am Einlagerungsstellplatz synchron im selben Transaktion ([ADR-0011](../adr/0011-stock-movements-and-event-log.md): „`StockMovement`-Events mit `qty != null` aktualisieren `StockBalance`-Felder synchron im selben Datenbank-Transaktion").
 
 ### BAC-7: Verknüpfung über document_id
 
-- [ ] Jeder `StockMovement`-Eintrag dieses Use Cases trägt `document_type = GoodsReceipt` und `document_id = <GoodsReceipt.id>` (ADR-0011: „Generische Belegverknüpfung" via `document_type` + `document_id`).
+- [ ] Jeder `StockMovement`-Eintrag dieses Use Cases trägt `document_type = GoodsReceipt` und `document_id = <GoodsReceipt.id>` ([ADR-0011](../adr/0011-stock-movements-and-event-log.md): „Generische Belegverknüpfung" via `document_type` + `document_id`).
 - [ ] Eine Abfrage aller `StockMovement`-Einträge mit `document_id = <GoodsReceipt.id>` liefert genau die Buchungen dieses Wareneingangs.
 
 ### BAC-8: Workspace-Scope
 
-- [ ] Das Backend legt `GoodsReceipt`, `GoodsReceiptPosition` und alle `StockMovement`-Einträge im aktiven Workspace an (ADR-0001: „Tenant-owned data inherits `WorkspaceScopedModel` and is filtered by `request.active_workspace`").
+- [ ] Das Backend legt `GoodsReceipt`, `GoodsReceiptPosition` und alle `StockMovement`-Einträge im aktiven Workspace an ([ADR-0001](../adr/0001-contact-and-party-data-model.md): „Tenant-owned data inherits `WorkspaceScopedModel` and is filtered by `request.active_workspace`").
 - [ ] Alle `ProductVariant`- und Lagerplatz-Lookups sind auf den aktiven Workspace beschränkt.
 
 ### BAC-9: Lizenzgrenze — Endpoint-Schnittstelle
@@ -164,13 +180,28 @@ sequenceDiagram
 
 ## Architectural gaps surfaced
 
-Die Put-Away-Strategie (Regel zur Lagerplatzvergabe beim Wareneingang) ist architektonisch nicht in einem bestehenden ADR als Service-Algorithmus oder konfigurierbares Produktattribut festgelegt. Dieser Use Case beschreibt die Wunschregel (bestehender Stellplatz mit gleicher `ProductVariant` + Charge zuerst, sonst freier Stellplatz nächster passender Größe); ob diese Logik als eigenständiger Algorithmus im Backend-Service, als konfigurierbare Strategie pro `ProductVariant` oder als mandantenweite Konfiguration implementiert wird, entscheidet `kxcrm-architect`. Diese Lücke ist in `open_questions.md` als OQ-0015 erfasst.
+Die Put-Away-Strategie (Regel zur Lagerplatzvergabe beim Wareneingang) ist architektonisch nicht in einem bestehenden ADR als Service-Algorithmus oder konfigurierbares Produktattribut festgelegt. Dieser Use Case beschreibt die Wunschregel (bestehender Stellplatz mit gleicher `ProductVariant` + Charge zuerst, sonst freier Stellplatz nächster passender Größe); ob diese Logik als eigenständiger Algorithmus im Backend-Service, als konfigurierbare Strategie pro `ProductVariant` oder als mandantenweite Konfiguration implementiert wird, entscheidet `kxcrm-architect`. Diese Lücke ist in `open_questions.md` als [OQ-0015](../open_questions.md) erfasst.
 
-Das `GoodsReceipt`-Aggregat ist kein definiertes Datenmodell in einem bestehenden ADR. Das vorliegende ADR (ADR-0017 als Kandidat) ist noch nicht geschrieben; `kxcrm-architect` entscheidet über das Datenmodell. Diese Lücke ist in `open_questions.md` als OQ-0018 erfasst.
+Das `GoodsReceipt`-Aggregat ist kein definiertes Datenmodell in einem bestehenden ADR. Das vorliegende ADR ([ADR-0017](../adr/0017-goods-receipt-as-process-aggregate.md) als Kandidat) ist noch nicht geschrieben; `kxcrm-architect` entscheidet über das Datenmodell. Diese Lücke ist in `open_questions.md` als [OQ-0018](../open_questions.md) erfasst.
 
-Der Identifier-Auflösungsmechanismus für Scan-Operationen ist auch in diesem Use Case relevant (vgl. UC-0009) und in keinem bestehenden ADR als eigenständige Identifier-Registry spezifiziert. Diese Lücke ist gemeinsam mit UC-0009 in `open_questions.md` als OQ-0016 erfasst.
+Der Identifier-Auflösungsmechanismus für Scan-Operationen ist auch in diesem Use Case relevant (vgl. [UC-0009](use_case_0009.md)) und in keinem bestehenden ADR als eigenständige Identifier-Registry spezifiziert. Diese Lücke ist gemeinsam mit [UC-0009](use_case_0009.md) in `open_questions.md` als [OQ-0016](../open_questions.md) erfasst.
+
+---
+
+## Referenzen
+- [ADR-0002](../adr/0002-admin-ui-framework.md) — DRF-Endpunkt-Konvention (`/api/`)
+- [ADR-0003](../adr/0003-product-catalog-backbone.md) — Produktkatalog-Kontext
+- [ADR-0009](../adr/0009-stock-domain-backbone.md) — `Location`-Hierarchie, Lagerplatzvorschlag
+- [ADR-0011](../adr/0011-stock-movements-and-event-log.md) — `StockMovement`-Log, generische Belegverknüpfung (`document_type`/`document_id`)
+- [ADR-0012](../adr/0012-lifetime-batch-lot-serial-tracking.md) — `Batch`-Datensatz (Chargennummer, Ablaufdatum)
+- [ADR-0021](../adr/0021-produkt-variantengranularitaet-topologie-schluesselung-attributkaskade.md) — Wareneingangspositionen referenzieren `ProductVariant`, nicht `Product`
+- [ADR-0017](../adr/0017-goods-receipt-as-process-aggregate.md) — `GoodsReceipt`-Aggregat (Kandidat, siehe OQ-0018)
+- [ADR-0001](../adr/0001-contact-and-party-data-model.md) — Workspace-Scoping (`WorkspaceScopedModel`)
+- [OQ-0015](../open_questions.md), [OQ-0016](../open_questions.md), [OQ-0018](../open_questions.md) — offene architektonische Lücken dieses Use Cases
+- [UC-0009](use_case_0009.md) — gemeinsamer Identifier-Auflösungsmechanismus (Scan-Operationen)
+- [Glossar](../glossar.md) — Begriffsdefinition (`ProductVariant`)
 
 ---
 
 ## Änderungsprotokoll
-- 2026-07-04: Anpassung an ADR-0021: Preis-/Bestands-/GTIN-Schlüsselung auf ProductVariant.
+- 2026-07-04: Anpassung an [ADR-0021](../adr/0021-produkt-variantengranularitaet-topologie-schluesselung-attributkaskade.md): Preis-/Bestands-/GTIN-Schlüsselung auf ProductVariant.

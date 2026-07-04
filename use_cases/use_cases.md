@@ -5,29 +5,29 @@ Jeder Use Case enthält PlantUML-Aktivitäts- und Ablaufdiagramme in eingebettet
 
 ---
 
-## Produktdomäne (ADR-0003 bis ADR-0008)
+## Produktdomäne ([ADR-0003](../adr/0003-product-catalog-backbone.md) bis [ADR-0008](../adr/0008-digital-product-passport-placeholder.md))
 
 | ID       | Titel                                                             | ADR-Bezug         | Anforderungsbezug              |
 |----------|-------------------------------------------------------------------|-------------------|-------------------------------|
-| UC-0001  | Produkt anlegen und klassifizieren                                | ADR-0003, ADR-0004 | REQ-0001, REQ-0005, REQ-0008 |
-| UC-0002  | Erweiterbare Attribute für ein Produkt pflegen                    | ADR-0004          | REQ-0009, REQ-0010            |
-| UC-0003  | Produktübersetzung verwalten                                      | ADR-0003          | REQ-0003                      |
-| UC-0004  | Preisliste und Produktpreise verwalten                            | ADR-0005          | REQ-0011, REQ-0012            |
-| UC-0005  | Stückliste für ein Fertigprodukt pflegen                          | ADR-0006          | REQ-0015                      |
-| UC-0006  | Dienstleistungsprofil für ein SERVICE-Produkt anlegen und bearbeiten | ADR-0007       | REQ-0016                      |
-| UC-0011  | Produktfamilie mit Varianten anlegen und Attribute kaskadieren    | ADR-0021, ADR-0003, ADR-0004, ADR-0005 | REQ-0001, REQ-0002, REQ-0010, REQ-0011 |
+| [UC-0001](use_case_0001.md)  | Produkt anlegen und klassifizieren                                | [ADR-0003](../adr/0003-product-catalog-backbone.md), [ADR-0004](../adr/0004-classification-and-extensible-attributes.md) | [REQ-0001](../requirements/REQ-0001.md), [REQ-0005](../requirements/REQ-0005.md), [REQ-0008](../requirements/REQ-0008.md) |
+| [UC-0002](use_case_0002.md)  | Erweiterbare Attribute für ein Produkt pflegen                    | [ADR-0004](../adr/0004-classification-and-extensible-attributes.md)          | [REQ-0009](../requirements/REQ-0009.md), [REQ-0010](../requirements/REQ-0010.md)            |
+| [UC-0003](use_case_0003.md)  | Produktübersetzung verwalten                                      | [ADR-0003](../adr/0003-product-catalog-backbone.md)          | [REQ-0003](../requirements/REQ-0003.md)                      |
+| [UC-0004](use_case_0004.md)  | Preisliste und Produktpreise verwalten                            | [ADR-0005](../adr/0005-pricing-units-of-measure.md)          | [REQ-0011](../requirements/REQ-0011.md), [REQ-0012](../requirements/REQ-0012.md)            |
+| [UC-0005](use_case_0005.md)  | Stückliste für ein Fertigprodukt pflegen                          | [ADR-0006](../adr/0006-sourcing-and-bill-of-materials.md)          | [REQ-0015](../requirements/REQ-0015.md)                      |
+| [UC-0006](use_case_0006.md)  | Dienstleistungsprofil für ein SERVICE-Produkt anlegen und bearbeiten | [ADR-0007](../adr/0007-service-profile.md)       | [REQ-0016](../requirements/REQ-0016.md)                      |
+| [UC-0011](use_case_0011.md)  | Produktfamilie mit Varianten anlegen und Attribute kaskadieren    | [ADR-0021](../adr/0021-produkt-variantengranularitaet-topologie-schluesselung-attributkaskade.md), [ADR-0003](../adr/0003-product-catalog-backbone.md), [ADR-0004](../adr/0004-classification-and-extensible-attributes.md), [ADR-0005](../adr/0005-pricing-units-of-measure.md) | [REQ-0001](../requirements/REQ-0001.md), [REQ-0002](../requirements/REQ-0002.md), [REQ-0010](../requirements/REQ-0010.md), [REQ-0011](../requirements/REQ-0011.md) |
 
-## Lagerdomäne (ADR-0009 bis ADR-0015)
-
-| ID       | Titel                                                             | ADR-Bezug                                      | Anforderungsbezug |
-|----------|-------------------------------------------------------------------|------------------------------------------------|-------------------|
-| UC-0007  | Mietangebot für eine Einzeleinheit erstellen und Verfügbarkeit prüfen | ADR-0009, ADR-0010, ADR-0011, ADR-0012, ADR-0013, ADR-0015 | —        |
-| UC-0008  | Komponenten-Bestandssuche mit Stellplatz-Anzeige                      | ADR-0003, ADR-0009, ADR-0010, ADR-0011                      | —        |
-| UC-0009  | Komponentenentnahme mit Bestandsbestätigung (Ad-hoc-Zykluszählung)    | ADR-0009, ADR-0010, ADR-0011, ADR-0012                      | —        |
-| UC-0010  | Wareneingang mit Lieferschein und Lagerplatzvorschlag                 | ADR-0002, ADR-0003, ADR-0009, ADR-0011, ADR-0012            | —        |
-
-## Produkt-/Lagerdomäne (spannt ADR-0006/ADR-0014 sowie ADR-0009 bis ADR-0011)
+## Lagerdomäne ([ADR-0009](../adr/0009-stock-domain-backbone.md) bis [ADR-0015](../adr/0015-unit-lifecycle-history.md))
 
 | ID       | Titel                                                             | ADR-Bezug                                      | Anforderungsbezug |
 |----------|-------------------------------------------------------------------|------------------------------------------------|-------------------|
-| UC-0012  | Kit kommissionieren und Fertigprodukt montieren                       | ADR-0014, ADR-0006, ADR-0019, ADR-0021, ADR-0009, ADR-0010, ADR-0011 | REQ-0015 |
+| [UC-0007](use_case_0007.md)  | Mietangebot für eine Einzeleinheit erstellen und Verfügbarkeit prüfen | [ADR-0009](../adr/0009-stock-domain-backbone.md), [ADR-0010](../adr/0010-stock-states-and-reservations.md), [ADR-0011](../adr/0011-stock-movements-and-event-log.md), [ADR-0012](../adr/0012-lifetime-batch-lot-serial-tracking.md), [ADR-0013](../adr/0013-customer-held-rental-stock.md), [ADR-0015](../adr/0015-unit-lifecycle-history.md) | —        |
+| [UC-0008](use_case_0008.md)  | Komponenten-Bestandssuche mit Stellplatz-Anzeige                      | [ADR-0003](../adr/0003-product-catalog-backbone.md), [ADR-0009](../adr/0009-stock-domain-backbone.md), [ADR-0010](../adr/0010-stock-states-and-reservations.md), [ADR-0011](../adr/0011-stock-movements-and-event-log.md)                      | —        |
+| [UC-0009](use_case_0009.md)  | Komponentenentnahme mit Bestandsbestätigung (Ad-hoc-Zykluszählung)    | [ADR-0009](../adr/0009-stock-domain-backbone.md), [ADR-0010](../adr/0010-stock-states-and-reservations.md), [ADR-0011](../adr/0011-stock-movements-and-event-log.md), [ADR-0012](../adr/0012-lifetime-batch-lot-serial-tracking.md)                      | —        |
+| [UC-0010](use_case_0010.md)  | Wareneingang mit Lieferschein und Lagerplatzvorschlag                 | [ADR-0002](../adr/0002-admin-ui-framework.md), [ADR-0003](../adr/0003-product-catalog-backbone.md), [ADR-0009](../adr/0009-stock-domain-backbone.md), [ADR-0011](../adr/0011-stock-movements-and-event-log.md), [ADR-0012](../adr/0012-lifetime-batch-lot-serial-tracking.md)            | —        |
+
+## Produkt-/Lagerdomäne (spannt [ADR-0006](../adr/0006-sourcing-and-bill-of-materials.md)/[ADR-0014](../adr/0014-assembly-kitting-and-split-stock.md) sowie [ADR-0009](../adr/0009-stock-domain-backbone.md) bis [ADR-0011](../adr/0011-stock-movements-and-event-log.md))
+
+| ID       | Titel                                                             | ADR-Bezug                                      | Anforderungsbezug |
+|----------|-------------------------------------------------------------------|------------------------------------------------|-------------------|
+| [UC-0012](use_case_0012.md)  | Kit kommissionieren und Fertigprodukt montieren                       | [ADR-0014](../adr/0014-assembly-kitting-and-split-stock.md), [ADR-0006](../adr/0006-sourcing-and-bill-of-materials.md), [ADR-0019](../adr/0019-product-kind-invariants.md), [ADR-0021](../adr/0021-produkt-variantengranularitaet-topologie-schluesselung-attributkaskade.md), [ADR-0009](../adr/0009-stock-domain-backbone.md), [ADR-0010](../adr/0010-stock-states-and-reservations.md), [ADR-0011](../adr/0011-stock-movements-and-event-log.md) | [REQ-0015](../requirements/REQ-0015.md) |

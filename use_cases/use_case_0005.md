@@ -1,7 +1,7 @@
 # UC-0005: Stückliste für ein Fertigprodukt pflegen
 
 **ID:** UC-0005  
-**Bezug:** ADR-0006, REQ-0015  
+**Bezug:** [ADR-0006](../adr/0006-sourcing-and-bill-of-materials.md), [REQ-0015](../requirements/REQ-0015.md)  
 **Lizenzseite:** Open-Source-Backend (Datenmodell und API); Closed-Source-Frontend (UI)
 
 ---
@@ -19,6 +19,18 @@
 Der Produktmanager öffnet die Produktdetailseite eines Fertigprodukts und klickt auf „Stückliste anlegen".
 
 ## Hauptablauf
+
+### Hauptablauf (Übersicht)
+Der folgende Ablauf fasst den Standardfall aus Sicht des Produktmanagers zusammen#59; Details zu Schnittstellen zeigt das Sequenzdiagramm darunter.
+
+```mermaid
+flowchart TD
+    A["Klick auf „Stückliste anlegen#quot;"] --> B["BillOfMaterials anlegen<br/>(kind #61;#61; MANUFACTURED_GOOD)"]
+    B --> C["Leere Stücklistenansicht anzeigen"]
+    C --> D["Komponente hinzufügen<br/>(Komponenten-Produkt, Menge, Einheit,<br/>Ausschuss-%, Alternativkomponente#63;)"]
+    D --> E["BomItem speichern"]
+    E --> F["Komponente in<br/>Stücklistentabelle anzeigen"]
+```
 
 ```mermaid
 sequenceDiagram
@@ -77,3 +89,11 @@ sequenceDiagram
 
 ### BAC-3: Fehlerdarstellung
 - [ ] Eine HTTP-400-Antwort wegen Selbstreferenz erzeugt eine inline Fehlermeldung; das Formular bleibt geöffnet.
+
+---
+
+## Referenzen
+- [ADR-0006](../adr/0006-sourcing-and-bill-of-materials.md) — `BillOfMaterials`/`BomItem`-Modell
+- [ADR-0019](../adr/0019-product-kind-invariants.md) — `kind`-Gating: `BillOfMaterials` ausschließlich für `kind = MANUFACTURED_GOOD`
+- [REQ-0015](../requirements/REQ-0015.md) — governing requirement
+- [Glossar](../glossar.md) — Begriffsdefinitionen (`BillOfMaterials (BOM)`, `BomItem`, `kind`)

@@ -1,10 +1,10 @@
 # UC-0011: Produktfamilie mit Varianten anlegen und Attribute kaskadieren
 
 **ID:** UC-0011
-**Bezug:** ADR-0021, ADR-0003, ADR-0004, ADR-0005, REQ-0001, REQ-0002, REQ-0010, REQ-0011
+**Bezug:** [ADR-0021](../adr/0021-produkt-variantengranularitaet-topologie-schluesselung-attributkaskade.md), [ADR-0003](../adr/0003-product-catalog-backbone.md), [ADR-0004](../adr/0004-classification-and-extensible-attributes.md), [ADR-0005](../adr/0005-pricing-units-of-measure.md), [REQ-0001](../requirements/REQ-0001.md), [REQ-0002](../requirements/REQ-0002.md), [REQ-0010](../requirements/REQ-0010.md), [REQ-0011](../requirements/REQ-0011.md)
 **Lizenzseite:** Open-Source-Backend (Datenmodell, Kaskadenauflösung im Serializer und API); Closed-Source-Frontend (Formular-UI, TypeScript-Kaskadenauflösung)
 
-**Warum:** Ohne einen Use Case, der die 3-Ebenen-Topologie und die Attribut-Vererbungskaskade aus ADR-0021 end-to-end durchspielt, bleibt unklar belegt, ob `ProductVariant` korrekt an `Product` (nicht an `ProductFamily`) hängt, ob Varianten-Overrides über Option A funktionieren und ob die Lesekaskade Variante → Produkt → Familie in Serializer und Frontend-Evaluator übereinstimmend implementiert ist.
+**Warum:** Ohne einen Use Case, der die 3-Ebenen-Topologie und die Attribut-Vererbungskaskade aus [ADR-0021](../adr/0021-produkt-variantengranularitaet-topologie-schluesselung-attributkaskade.md) end-to-end durchspielt, bleibt unklar belegt, ob `ProductVariant` korrekt an `Product` (nicht an `ProductFamily`) hängt, ob Varianten-Overrides über Option A funktionieren und ob die Lesekaskade Variante → Produkt → Familie in Serializer und Frontend-Evaluator übereinstimmend implementiert ist.
 
 ---
 
@@ -14,8 +14,8 @@
 
 ## Vorbedingungen
 - Der Produktmanager ist authentifiziert und hat einen aktiven Workspace.
-- Mindestens eine `Classification` mit `ClassificationNode`-Baum ist im System geladen (ADR-0004).
-- Ein `AttributeSet` mit mindestens einer `AttributeDefinition` ist an `kind = TRADING_GOOD` oder den gewählten `ClassificationNode` gebunden (ADR-0004).
+- Mindestens eine `Classification` mit `ClassificationNode`-Baum ist im System geladen ([ADR-0004](../adr/0004-classification-and-extensible-attributes.md)).
+- Ein `AttributeSet` mit mindestens einer `AttributeDefinition` ist an `kind = TRADING_GOOD` oder den gewählten `ClassificationNode` gebunden ([ADR-0004](../adr/0004-classification-and-extensible-attributes.md)).
 - Die Basismaßeinheit (`base_uom`) und die Steuerklasse (`tax_class`) für den Workspace sind konfiguriert.
 
 ## Auslöser
@@ -24,6 +24,21 @@ Der Produktmanager navigiert zur Produktlistenseite und klickt auf „Neue Produ
 ---
 
 ## Hauptablauf
+
+### Hauptablauf (Übersicht)
+
+Der Happy Path als Geschäftsablauf, ohne Anmeldung und ohne API-Details:
+
+```mermaid
+flowchart TD
+    A[ProductFamily anlegen] --> B[Product mit Classification<br/>und kind=TRADING_GOOD anlegen]
+    B --> C[Attributwert auf Produktebene setzen]
+    C --> D[Zwei ProductVariant #40;V1, V2#41; anlegen]
+    D --> E[Attributwert auf V1 überschreiben]
+    E --> F[Preis je Variante #40;V1, V2#41; setzen]
+    F --> G[Effektivattribute je Variante auflösen:<br/>V1 Override, V2 geerbt]
+    G --> H[Produktdetailseite mit Varianten,<br/>Preisen und Attributwerten anzeigen]
+```
 
 ```mermaid
 sequenceDiagram
@@ -41,7 +56,7 @@ sequenceDiagram
     FE->>PM: Formular „Produkt anlegen" innerhalb der Familie anzeigen
     PM->>FE: sku, kind=TRADING_GOOD, ClassificationNode,<br/>base_uom, tax_class, brand eingeben
     FE->>BE: POST /api/products/<br/>{product_family_id, sku, kind=TRADING_GOOD, …}
-    BE->>DB: INSERT Product<br/>(FK auf ProductFamily; ADR-0021: „ProductVariant trägt<br/>einen FK auf Product (nicht auf ProductFamily)")
+    BE->>DB: INSERT Product<br/>(FK auf ProductFamily#59; ADR-0021: „ProductVariant trägt<br/>einen FK auf Product (nicht auf ProductFamily)")
     DB-->>BE: Product-ID
     BE->>DB: INSERT ProductClassification (product_id, classification_node_id)
     DB-->>BE: OK
@@ -81,7 +96,7 @@ sequenceDiagram
 
     PM->>FE: Preis je Variante eingeben (V1, V2)
     FE->>BE: POST /api/product-prices/<br/>{variant_id, amount, currency, valid_from}
-    BE->>DB: INSERT ProductPrice<br/>(FK auf ProductVariant; ADR-0005 Amendment 2026-06-28:<br/>„ProductPrice trägt einen FK auf ProductVariant<br/>(nicht auf Product)")
+    BE->>DB: INSERT ProductPrice<br/>(FK auf ProductVariant#59; ADR-0005 Amendment 2026-06-28:<br/>„ProductPrice trägt einen FK auf ProductVariant<br/>(nicht auf Product)")
     DB-->>BE: OK
     BE-->>FE: 201 Created — ProductPrice
 
@@ -103,21 +118,21 @@ sequenceDiagram
 
 ## Alternativablauf A: Doppelte Variant-SKU
 
-- Im Schritt „POST /api/products/{id}/variants/" erkennt das Backend, dass die Kombination `(workspace, sku)` bereits über eine bestehende `ProductVariant` belegt ist (REQ-0002 AC-2).
+- Im Schritt „POST /api/products/{id}/variants/" erkennt das Backend, dass die Kombination `(workspace, sku)` bereits über eine bestehende `ProductVariant` belegt ist ([REQ-0002](../requirements/REQ-0002.md) AC-2).
 - Das Backend antwortet mit HTTP 400 und einer Fehlermeldung, die die doppelte SKU benennt.
 - Das Frontend zeigt die Fehlermeldung im Variantenformular an; der Produktmanager korrigiert die SKU.
 
 ## Alternativablauf B: Löschung der letzten verbleibenden Variante
 
 - Der Produktmanager versucht, die einzige verbleibende `ProductVariant` eines `Product` zu löschen.
-- Das Backend prüft die Invariante „jedes `Product` besitzt ≥1 `ProductVariant`" (ADR-0021).
+- Das Backend prüft die Invariante „jedes `Product` besitzt ≥1 `ProductVariant`" ([ADR-0021](../adr/0021-produkt-variantengranularitaet-topologie-schluesselung-attributkaskade.md)).
 - Das Backend lehnt die Löschung mit HTTP 400 ab und benennt die verletzte Invariante.
 - Das Frontend zeigt einen Hinweis, dass zuerst eine Ersatzvariante angelegt oder das gesamte `Product` gelöscht werden muss.
 
 ## Alternativablauf C: Override-zu-null
 
 - Der Produktmanager versucht, einen bestehenden Varianten-Override auf einen leeren/`null`-Wert zu setzen, um zur Vererbung zurückzukehren.
-- Das Backend lehnt diese Eingabe mit HTTP 400 ab (ADR-0021: „Ein Override-zu-null existiert nicht. Ein Varianten-Override-Wert ist immer ein konkreter, nicht-null Domänenwert").
+- Das Backend lehnt diese Eingabe mit HTTP 400 ab ([ADR-0021](../adr/0021-produkt-variantengranularitaet-topologie-schluesselung-attributkaskade.md): „Ein Override-zu-null existiert nicht. Ein Varianten-Override-Wert ist immer ein konkreter, nicht-null Domänenwert").
 - Das Frontend zeigt einen Hinweis, dass eine Rückkehr zur Vererbung ausschließlich über das Löschen der Override-Zeile (`DELETE /api/variants/{id}/attribute-values/{attribute_definition_id}/`) möglich ist, nicht über das Setzen von `null`.
 - Nach dem Löschen der Override-Zeile liefert `GET /api/variants/{id}/effective-attributes/` wieder den Produkt- oder Familienwert (INHERIT).
 
@@ -156,5 +171,16 @@ sequenceDiagram
 
 ---
 
+## Referenzen
+- [ADR-0021](../adr/0021-produkt-variantengranularitaet-topologie-schluesselung-attributkaskade.md) — 3-Ebenen-Topologie `ProductFamily`/`Product`/`ProductVariant`, Attribut-Vererbungskaskade, Option A (nullable `variant_id`)
+- [ADR-0003](../adr/0003-product-catalog-backbone.md) — `ProductFamily`/`Product`-Basismodell
+- [ADR-0004](../adr/0004-classification-and-extensible-attributes.md) — `AttributeSet`/`AttributeDefinition`-Bindung
+- [ADR-0005](../adr/0005-pricing-units-of-measure.md) — `ProductPrice` FK → `ProductVariant`
+- [ADR-0019](../adr/0019-product-kind-invariants.md) — `kind = TRADING_GOOD`-Kontext
+- [REQ-0001](../requirements/REQ-0001.md), [REQ-0002](../requirements/REQ-0002.md), [REQ-0010](../requirements/REQ-0010.md), [REQ-0011](../requirements/REQ-0011.md) — governing requirements
+- [Glossar](../glossar.md) — Begriffsdefinitionen (`ProductFamily`, `ProductVariant`, `kind`, `AttributeSet`)
+
+---
+
 ## Änderungsprotokoll
-- 2026-07-04: Ersterstellung. Schließt die Validierungslücke, dass kein Use Case die 3-Ebenen-Topologie, die Schlüsselungstabelle und die Attribut-Vererbungskaskade aus ADR-0021 end-to-end durchspielt.
+- 2026-07-04: Ersterstellung. Schließt die Validierungslücke, dass kein Use Case die 3-Ebenen-Topologie, die Schlüsselungstabelle und die Attribut-Vererbungskaskade aus [ADR-0021](../adr/0021-produkt-variantengranularitaet-topologie-schluesselung-attributkaskade.md) end-to-end durchspielt.

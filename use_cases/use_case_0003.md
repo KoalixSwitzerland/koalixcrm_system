@@ -1,7 +1,7 @@
 # UC-0003: Produktübersetzung verwalten
 
 **ID:** UC-0003  
-**Bezug:** ADR-0003, REQ-0003  
+**Bezug:** [ADR-0003](../adr/0003-product-catalog-backbone.md), [REQ-0003](../requirements/REQ-0003.md)  
 **Lizenzseite:** Open-Source-Backend (Datenmodell und API); Closed-Source-Frontend (UI)
 
 ---
@@ -18,6 +18,19 @@
 Der Produktmanager öffnet die Produktdetailseite und navigiert zum Übersetzungsbereich.
 
 ## Hauptablauf
+
+### Hauptablauf (Übersicht)
+Der folgende Ablauf fasst den Standardfall aus Sicht des Produktmanagers zusammen#59; Details zu Schnittstellen zeigt das Sequenzdiagramm darunter.
+
+```mermaid
+flowchart TD
+    A["Übersetzungsbereich öffnen"] --> B["Übersetzungstabelle anzeigen<br/>(eine Zeile pro Sprache)"]
+    B --> C["Sprache wählen#59; name,<br/>short_description, long_description eingeben"]
+    C --> D["Übersetzung speichern"]
+    D --> E{"Sprachcode gültig und neu#63;"}
+    E -- "Ja" --> F["Neue Übersetzungszeile<br/>in Tabelle anzeigen"]
+    E -- "Nein" --> C
+```
 
 ```mermaid
 sequenceDiagram
@@ -74,3 +87,10 @@ sequenceDiagram
 
 ### BAC-3: Fallback-Anzeige
 - [ ] Das Frontend zeigt an, welche Sprache als Fallback-Sprache des Workspace konfiguriert ist.
+
+---
+
+## Referenzen
+- [ADR-0003](../adr/0003-product-catalog-backbone.md) — `ProductTranslation`-Modell
+- [REQ-0003](../requirements/REQ-0003.md) — governing requirement
+- [Glossar](../glossar.md) — Begriffsdefinition (`ProductTranslation`)

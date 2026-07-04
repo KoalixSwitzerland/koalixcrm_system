@@ -1,7 +1,7 @@
 # UC-0001: Produkt anlegen und klassifizieren
 
 **ID:** UC-0001  
-**Bezug:** ADR-0003, ADR-0004, REQ-0001, REQ-0005, REQ-0008  
+**Bezug:** [ADR-0003](../adr/0003-product-catalog-backbone.md), [ADR-0004](../adr/0004-classification-and-extensible-attributes.md), [REQ-0001](../requirements/REQ-0001.md), [REQ-0005](../requirements/REQ-0005.md), [REQ-0008](../requirements/REQ-0008.md)  
 **Lizenzseite:** Open-Source-Backend (Datenmodell und API); Closed-Source-Frontend (UI-Interaktion)
 
 ---
@@ -19,6 +19,19 @@
 Der Produktmanager navigiert zur Produktlistenseite und klickt auf „Neues Produkt anlegen".
 
 ## Hauptablauf
+
+### Hauptablauf (Übersicht)
+Der folgende Ablauf fasst den Standardfall aus Sicht des Produktmanagers zusammen#59; Details zu Schnittstellen zeigt das Sequenzdiagramm darunter.
+
+```mermaid
+flowchart TD
+    A["Neues Produkt anlegen"] --> B["Produktformular ausfüllen<br/>(SKU, kind, lifecycle_status,<br/>base_uom, tax_class, brand)"]
+    B --> C["ClassificationNode auswählen"]
+    C --> D["Produkt speichern"]
+    D --> E{"SKU bereits vorhanden#63;"}
+    E -- "Nein" --> F["Produktdetailseite anzeigen"]
+    E -- "Ja" --> B
+```
 
 ```mermaid
 sequenceDiagram
@@ -74,3 +87,12 @@ sequenceDiagram
 
 ### BAC-3: Klassifizierungsbaum
 - [ ] Der Klassifizierungsbaum ist durchsuchbar; der Produktmanager gibt einen Suchbegriff ein und sieht passende Knoten.
+
+---
+
+## Referenzen
+- [ADR-0003](../adr/0003-product-catalog-backbone.md) — Produktkatalog-Fundament: `Product`-Basisfelder und `kind`-Enum
+- [ADR-0004](../adr/0004-classification-and-extensible-attributes.md) — `Classification`/`ClassificationNode`-Baum
+- [ADR-0019](../adr/0019-product-kind-invariants.md) — autoritative `kind`-Gating-Tabelle (`ProductKindPolicy`)
+- [REQ-0001](../requirements/REQ-0001.md), [REQ-0005](../requirements/REQ-0005.md), [REQ-0008](../requirements/REQ-0008.md) — governing requirements
+- [Glossar](../glossar.md) — Begriffsdefinitionen (`kind`, `lifecycle_status`, `Classification`, `ClassificationNode`)
