@@ -1,0 +1,225 @@
+site_name: "koalixcrm — Architecture Documentation"
+site_description: "Architecture documentation based on arc42"
+docs_dir: .
+site_dir: ../site
+theme:
+  name: material
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - toc.integrate
+  palette:
+    - scheme: default
+
+plugins:
+  - search
+  - material/offline
+
+markdown_extensions:
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - admonition
+  - pymdownx.details
+  - tables
+  - toc:
+      permalink: true
+
+nav:
+  - "1. Introduction and Goals":
+    - 01_introduction_and_goals/index.md
+    - "System-Design Requirements":
+      - "REQ-0001": 01_introduction_and_goals/requirements/REQ-0001.md
+      - "REQ-0002": 01_introduction_and_goals/requirements/REQ-0002.md
+      - "REQ-0003": 01_introduction_and_goals/requirements/REQ-0003.md
+      - "REQ-0004": 01_introduction_and_goals/requirements/REQ-0004.md
+      - "REQ-0005": 01_introduction_and_goals/requirements/REQ-0005.md
+      - "REQ-0006": 01_introduction_and_goals/requirements/REQ-0006.md
+      - "REQ-0007": 01_introduction_and_goals/requirements/REQ-0007.md
+      - "REQ-0008": 01_introduction_and_goals/requirements/REQ-0008.md
+      - "REQ-0009": 01_introduction_and_goals/requirements/REQ-0009.md
+      - "REQ-0010": 01_introduction_and_goals/requirements/REQ-0010.md
+      - "REQ-0011": 01_introduction_and_goals/requirements/REQ-0011.md
+      - "REQ-0012": 01_introduction_and_goals/requirements/REQ-0012.md
+      - "REQ-0013": 01_introduction_and_goals/requirements/REQ-0013.md
+      - "REQ-0014": 01_introduction_and_goals/requirements/REQ-0014.md
+      - "REQ-0015": 01_introduction_and_goals/requirements/REQ-0015.md
+      - "REQ-0016": 01_introduction_and_goals/requirements/REQ-0016.md
+      - "REQ-0017": 01_introduction_and_goals/requirements/REQ-0017.md
+      - "REQ-0018": 01_introduction_and_goals/requirements/REQ-0018.md
+      - "REQ-0019": 01_introduction_and_goals/requirements/REQ-0019.md
+      - "REQ-0020": 01_introduction_and_goals/requirements/REQ-0020.md
+      - "REQ-0021": 01_introduction_and_goals/requirements/REQ-0021.md
+      - "REQ-0022": 01_introduction_and_goals/requirements/REQ-0022.md
+      - "REQ-0023": 01_introduction_and_goals/requirements/REQ-0023.md
+      - "REQ-0024": 01_introduction_and_goals/requirements/REQ-0024.md
+      - "REQ-0025": 01_introduction_and_goals/requirements/REQ-0025.md
+      - "REQ-0026": 01_introduction_and_goals/requirements/REQ-0026.md
+      - "REQ-0027": 01_introduction_and_goals/requirements/REQ-0027.md
+    - "Imported Source Documents":
+      - "Project README": 01_introduction_and_goals/QQ_IMPORT_README.md
+  - "2. Architecture Constraints":
+    - 02_architecture_constraints/index.md
+  - "3. System Scope and Context":
+    - 03_system_scope_and_context/index.md
+    - "Entry Points": 03_system_scope_and_context/QQ_SD_EntryPoints.md
+    - "Interfaces":
+      - "REST API Specifications": 03_system_scope_and_context/QQ_SD_Interface_REST_Specifications.md
+      - "Async Interface Specifications": 03_system_scope_and_context/QQ_SD_Interface_Async_Specifications.md
+    - "Imported Source Documents":
+      - "API Routing": 03_system_scope_and_context/QQ_IMPORT_docs-api-routing.md
+  - "4. Solution Strategy":
+    - 04_solution_strategy/index.md
+  - "5. Building Block View":
+    - 05_building_block_view/index.md
+    - "Service Architecture": 05_building_block_view/QQ_SD_ServiceArchitecture.md
+    - "Component Architecture": 05_building_block_view/QQ_SD_ComponentArchitecture.md
+    - "Services":
+      - "Django App": 05_building_block_view/QQ_SD_ServiceDocumentation_DjangoApp.md
+      - "Celery Worker": 05_building_block_view/QQ_SD_ServiceDocumentation_CeleryWorker.md
+    - "High-Level":
+      - "KoalixCRM": 05_building_block_view/QQ_HL_Doc_KoalixCRM.md
+    - "Modules":
+      - "koalixcrm — Accounting": 05_building_block_view/koalixcrm/accounting/QQ_ML_Doc_Accounting.md
+      - "koalixcrm — Auth": 05_building_block_view/koalixcrm/auth/QQ_ML_Doc_Auth.md
+      - "koalixcrm — Contacts": 05_building_block_view/koalixcrm/contacts/QQ_ML_Doc_Contacts.md
+      - "koalixcrm — Contracts": 05_building_block_view/koalixcrm/contracts/QQ_ML_Doc_Contracts.md
+      - "koalixcrm — Core": 05_building_block_view/koalixcrm/core/QQ_ML_Doc_Core.md
+      - "koalixcrm — DjangoUserExtension": 05_building_block_view/koalixcrm/djangoUserExtension/QQ_ML_Doc_DjangoUserExtension.md
+      - "koalixcrm — Products": 05_building_block_view/koalixcrm/products/QQ_ML_Doc_Products.md
+      - "koalixcrm — Reporting": 05_building_block_view/koalixcrm/reporting/QQ_ML_Doc_Reporting.md
+      - "koalixcrm — Shared": 05_building_block_view/koalixcrm/shared/QQ_ML_Doc_Shared.md
+      - "koalixcrm — Subscriptions": 05_building_block_view/koalixcrm/subscriptions/QQ_ML_Doc_Subscriptions.md
+      - "koalixcrm_microservices": 05_building_block_view/koalixcrm_microservices/QQ_ML_Doc_Microservices.md
+      - "koalixcrm_utils": 05_building_block_view/koalixcrm_utils/QQ_ML_Doc_Utils.md
+    - "Source-Level":
+      - "Accounting": 05_building_block_view/koalixcrm/accounting/QQ_LL_Doc_Accounting.md
+      - "Accounting API": 05_building_block_view/koalixcrm/accounting_api_py/QQ_LL_Doc_AccountingApiPy.md
+      - "Auth": 05_building_block_view/koalixcrm/auth/QQ_LL_Doc_Auth.md
+      - "Contacts Models": 05_building_block_view/koalixcrm/contacts/QQ_LL_Doc_Contacts_Models.md
+      - "Contacts Views and Admin": 05_building_block_view/koalixcrm/contacts/QQ_LL_Doc_Contacts_ViewsAdminManagement.md
+      - "Contacts API": 05_building_block_view/koalixcrm/contacts_api_py/QQ_LL_Doc_ContactsApiPy.md
+      - "Contracts Admin": 05_building_block_view/koalixcrm/contracts/QQ_LL_Doc_Contracts_Admin.md
+      - "Contracts Models": 05_building_block_view/koalixcrm/contracts/QQ_LL_Doc_Contracts_Models.md
+      - "Contracts Views and Serializers": 05_building_block_view/koalixcrm/contracts/QQ_LL_Doc_Contracts_ViewsSerializers.md
+      - "Contracts API": 05_building_block_view/koalixcrm/contracts_api_py/QQ_LL_Doc_ContractsApiPy.md
+      - "Core Infrastructure": 05_building_block_view/koalixcrm/core/QQ_LL_Doc_Core_Infrastructure.md
+      - "Core Models": 05_building_block_view/koalixcrm/core/QQ_LL_Doc_Core_Models.md
+      - "Core API": 05_building_block_view/koalixcrm/core_api_py/QQ_LL_Doc_CoreApiPy.md
+      - "DjangoUserExtension": 05_building_block_view/koalixcrm/djangoUserExtension/QQ_LL_Doc_DjangoUserExtension.md
+      - "Products": 05_building_block_view/koalixcrm/products/QQ_LL_Doc_Products.md
+      - "Products API": 05_building_block_view/koalixcrm/products_api_py/QQ_LL_Doc_ProductsApiPy.md
+      - "Reporting — Project and Task Models": 05_building_block_view/koalixcrm/reporting/QQ_LL_Doc_Reporting_ProjectTaskModels.md
+      - "Reporting — Resource Agreement Models": 05_building_block_view/koalixcrm/reporting/QQ_LL_Doc_Reporting_ResourceAgreementModels.md
+      - "Reporting — Services and Admin": 05_building_block_view/koalixcrm/reporting/QQ_LL_Doc_Reporting_ServicesAdmin.md
+      - "Reporting — Views and Serializers": 05_building_block_view/koalixcrm/reporting/QQ_LL_Doc_Reporting_ViewsSerializers.md
+      - "Reporting API": 05_building_block_view/koalixcrm/reporting_api_py/QQ_LL_Doc_ReportingApiPy.md
+      - "Shared": 05_building_block_view/koalixcrm/shared/QQ_LL_Doc_Shared.md
+      - "Subscriptions": 05_building_block_view/koalixcrm/subscriptions/QQ_LL_Doc_Subscriptions.md
+      - "Microservices": 05_building_block_view/koalixcrm_microservices/QQ_LL_Doc_Microservices.md
+      - "MQ Commands": 05_building_block_view/koalixcrm_mq_commands/QQ_LL_Doc_MQCommands.md
+      - "Utils": 05_building_block_view/koalixcrm_utils/QQ_LL_Doc_Utils.md
+      - "Project Settings": 05_building_block_view/projectsettings/QQ_LL_Doc_ProjectSettings.md
+    - "Imported Source Documents":
+      - "Optional Apps Architecture": 05_building_block_view/QQ_IMPORT_docs-architecture-optional-apps.md
+  - "6. Runtime View":
+    - 06_runtime_view/index.md
+    - "System-Design Use Cases":
+      - "Use-Case Directory": 06_runtime_view/use_cases.md
+      - "UC-0001": 06_runtime_view/use_case_0001.md
+      - "UC-0002": 06_runtime_view/use_case_0002.md
+      - "UC-0003": 06_runtime_view/use_case_0003.md
+      - "UC-0004": 06_runtime_view/use_case_0004.md
+      - "UC-0005": 06_runtime_view/use_case_0005.md
+      - "UC-0006": 06_runtime_view/use_case_0006.md
+      - "UC-0007": 06_runtime_view/use_case_0007.md
+      - "UC-0008": 06_runtime_view/use_case_0008.md
+      - "UC-0009": 06_runtime_view/use_case_0009.md
+      - "UC-0010": 06_runtime_view/use_case_0010.md
+      - "UC-0011": 06_runtime_view/use_case_0011.md
+      - "UC-0012": 06_runtime_view/use_case_0012.md
+    - "Use Cases":
+      - "Workspace and Authentication": 06_runtime_view/QQ_SD_Use_Case_WorkspaceAuth.md
+      - "Contacts": 06_runtime_view/QQ_SD_Use_Case_Contacts.md
+      - "Contracts and Sales": 06_runtime_view/QQ_SD_Use_Case_ContractsSales.md
+      - "Products and Pricing": 06_runtime_view/QQ_SD_Use_Case_ProductsPricing.md
+      - "Accounting": 06_runtime_view/QQ_SD_Use_Case_Accounting.md
+      - "Reporting and Export": 06_runtime_view/QQ_SD_Use_Case_ReportingExport.md
+      - "User Extensions": 06_runtime_view/QQ_SD_Use_Case_UserExtensions.md
+    - "Allocation Matrix": 06_runtime_view/QQ_SD_AllocationMatrix.md
+  - "7. Deployment View":
+    - 07_deployment_view/index.md
+    - "Imported Source Documents":
+      - "Local Docker Desktop Setup": 07_deployment_view/QQ_IMPORT_docs-setup-local-docker-desktop.md
+      - "Linux Server Setup": 07_deployment_view/QQ_IMPORT_docs-setup-linux-server.md
+  - "8. Cross-cutting Concepts":
+    - 08_cross_cutting_concepts/index.md
+    - "Security": 08_cross_cutting_concepts/QQ_SD_Security_Report.md
+    - "Access Control": 08_cross_cutting_concepts/QQ_SD_AccessControl.md
+    - "Configuration": 08_cross_cutting_concepts/QQ_SD_Configuration.md
+    - "Settings": 08_cross_cutting_concepts/QQ_SD_Settings.md
+    - "Parameterization": 08_cross_cutting_concepts/QQ_SD_Parameterization.md
+    - "Entity Relations": 08_cross_cutting_concepts/QQ_SD_EntityRelationDiagram.md
+    - "Testing": 08_cross_cutting_concepts/QQ_SD_Unit_Test_Coverage.md
+    - "UI Architecture": 08_cross_cutting_concepts/QQ_SD_UIArchitecture.md
+    - "UI Identification": 08_cross_cutting_concepts/QQ_SD_UIIdentification.md
+    - "UI Features":
+      - "Core Admin Screens": 08_cross_cutting_concepts/QQ_UI_Doc_CoreAdminScreens.md
+      - "Domain Admin Screens": 08_cross_cutting_concepts/QQ_UI_Doc_DomainAdminScreens.md
+  - "9. Architecture Decisions":
+    - 09_architecture_decisions/index.md
+    - "System-Design ADRs":
+      - "ADR-0001": 09_architecture_decisions/0001-contact-and-party-data-model.md
+      - "ADR-0002": 09_architecture_decisions/0002-admin-ui-framework.md
+      - "ADR-0003": 09_architecture_decisions/0003-product-catalog-backbone.md
+      - "ADR-0004": 09_architecture_decisions/0004-classification-and-extensible-attributes.md
+      - "ADR-0005": 09_architecture_decisions/0005-pricing-units-of-measure.md
+      - "ADR-0006": 09_architecture_decisions/0006-sourcing-and-bill-of-materials.md
+      - "ADR-0007": 09_architecture_decisions/0007-service-profile.md
+      - "ADR-0008": 09_architecture_decisions/0008-digital-product-passport-placeholder.md
+      - "ADR-0009": 09_architecture_decisions/0009-stock-domain-backbone.md
+      - "ADR-0010": 09_architecture_decisions/0010-stock-states-and-reservations.md
+      - "ADR-0011": 09_architecture_decisions/0011-stock-movements-and-event-log.md
+      - "ADR-0012": 09_architecture_decisions/0012-lifetime-batch-lot-serial-tracking.md
+      - "ADR-0013": 09_architecture_decisions/0013-customer-held-rental-stock.md
+      - "ADR-0014": 09_architecture_decisions/0014-assembly-kitting-and-split-stock.md
+      - "ADR-0015": 09_architecture_decisions/0015-unit-lifecycle-history.md
+      - "ADR-0016": 09_architecture_decisions/0016-identifier-registry-and-barcode-resolution.md
+      - "ADR-0017": 09_architecture_decisions/0017-goods-receipt-as-process-aggregate.md
+      - "ADR-0018": 09_architecture_decisions/0018-canonical-product-attribute-vocabulary.md
+      - "ADR-0019": 09_architecture_decisions/0019-product-kind-invariants.md
+      - "ADR-0020": 09_architecture_decisions/0020-shared-declarative-attribute-validation.md
+      - "ADR-0021": 09_architecture_decisions/0021-produkt-variantengranularitaet-topologie-schluesselung-attributkaskade.md
+      - "Architecture Overview": 09_architecture_decisions/architecture_overview.md
+    - "Imported Source Documents":
+      - "Migration v1.14.0 to v2.0.0": 09_architecture_decisions/QQ_IMPORT_docs-migration-v1-14-0-to-v2-0-0.md
+      - "CommercialDocument and Address Field Changes": 09_architecture_decisions/QQ_IMPORT_docs-migration-commercial-document-and-address-fields.md
+  - "10. Quality Requirements":
+    - 10_quality_requirements/index.md
+    - "Quality Attribute Scenarios":
+      - "QAS-0001": 10_quality_requirements/quality_attribute_scenario_0001.md
+      - "QAS-0002": 10_quality_requirements/quality_attribute_scenario_0002.md
+      - "QAS-0003": 10_quality_requirements/quality_attribute_scenario_0003.md
+  - "11. Risks and Technical Debt":
+    - 11_risks_and_technical_debt/index.md
+    - "Recommendations": 11_risks_and_technical_debt/QQ_SD_Architecture_Recommendations.md
+    - "Open Questions": 11_risks_and_technical_debt/open_questions.md
+  - "12. Glossary":
+    - 12_glossary/index.md
+    - "System-Design Glossar": 12_glossary/glossar.md
+    - "Terms": 12_glossary/QQ_SD_Glossary.md
+
+extra:
+  generator: false
+
+extra_javascript:
+  - javascripts/extra.js
+
+copyright: >
+  Based on the <a href="https://arc42.org">arc42</a> architecture documentation template,
+  licensed under <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>.
