@@ -64,7 +64,9 @@ Lieferzeit, Mindestbestellmenge (MOQ), Einkaufspreis.
 `kind = MANUFACTURED_GOOD`.
 
 **`BomItem`** (workspace-scoped) hält Komponenten-Produkt (FK auf `Product`), Menge,
-Ausschuss-Prozentsatz und Alternativkomponenten. Die Strukturierung folgt ISA-95 Part 2.
+Ausschuss-Prozentsatz, Alternativkomponenten und einen optionalen, nicht-bindenden
+`default_component_variant`-FK auf `ProductVariant` (ADR-0021, Nachtrag 2026-07-04). Die
+Strukturierung folgt ISA-95 Part 2.
 
 ---
 
@@ -117,6 +119,11 @@ autoritäre Quelle für alle `kind`-Gating-Regeln abhängiger Entitäten einschl
 `kind ∈ {MANUFACTURED_GOOD, KIT}` erweitert (siehe Nachtrag oben); die Durchsetzung erfolgt
 über `ProductKindPolicy`.
 
+**ADR-0021 (Produkt-Variantengranularität):** `BillOfMaterials`/`BomItem` bleiben Product-gekeyt
+(ADR-0021 bestätigt dies explizit). `BomItem.default_component_variant` (Nachtrag 2026-07-04)
+ist ein optionaler, nicht-bindender Vorschlag auf `ProductVariant`; die verbindliche
+Komponenten-Variantenauflösung erfolgt am Buchungspunkt gemäß ADR-0011 und ADR-0014.
+
 ## Nachtrag 2026-06-27 — BOM-Geltungsbereich auf KIT erweitert (siehe ADR-0019)
 
 Die ursprüngliche Formulierung „`BillOfMaterials` gilt ausschließlich für `kind = MANUFACTURED_GOOD`"
@@ -129,7 +136,33 @@ dieses ADR bleibt unverändert als historischer Beleg erhalten.
 
 ---
 
+## Nachtrag 2026-07-04 — Komponenten-Varianten-Auflösung (OQ-0019, ADR-0021)
+
+ADR-0021 fixiert `ProductVariant` als autoritativen Bestandsschlüssel und positioniert
+`BillOfMaterials`/`BomItem` unverändert auf `Product`-Ebene („`BillOfMaterials` verbleibt auf
+`Product`-Ebene; unverändert", ADR-0021 §Abhängigkeiten). `BomItem` trägt weiterhin einen FK auf
+das Komponenten-`Product`, nicht auf eine konkrete `ProductVariant`; die BOM-Definition bleibt
+damit variantenneutral, wie es für ISA-95-Stücklisten die Regel ist. Trägt das Komponenten-
+`Product` mehr als eine `ProductVariant`, ist die konkrete Auflösung nicht Teil der BOM-Definition,
+sondern des Buchungsvorgangs (`ProductionOrderComponent`-Reservierung, Kit-Pick) —
+siehe ADR-0014, Nachtrag 2026-07-04.
+
+`BomItem` erhält ein neues, optionales Feld `default_component_variant` — FK auf `ProductVariant`
+(nullable), eingeschränkt auf Varianten des in `BomItem` referenzierten Komponenten-`Product`.
+Dieses Feld ist ein unverbindlicher Vorschlag für die Applikationsschicht (Vorbelegung im
+Kommissionier-/Reservierungsformular); es bindet keine Bestandsbuchung. Ist es `NULL`, liefert es
+keinen Vorschlag; die Auflösung erfolgt vollständig nach der in ADR-0014 (Nachtrag 2026-07-04)
+festgelegten Reihenfolge.
+
+Diese Erweiterung schliesst die in ADR-0021 begonnene, aber unvollständige Ripple-Liste
+(OQ-0019): `BomItem` selbst bleibt Product-gekeyt; die Variantenbindung entsteht ausschliesslich
+am Buchungspunkt.
+
 ## Changelog
+- 2026-07-04: OQ-0019 geschlossen (gemeinsam mit ADR-0011 und ADR-0014): `BomItem` bleibt
+  Product-gekeyt und erhält ein optionales, nicht-bindendes `default_component_variant`-Feld;
+  die verbindliche Variantenauflösung liegt am Buchungspunkt (`ProductionOrderComponent`/
+  `StockMovement`, siehe ADR-0011 und ADR-0014, Nachtrag 2026-07-04). Siehe Nachtrag 2026-07-04.
 - 2026-06-27: Nachtrag ergänzt: BOM-Geltungsbereich auf `kind ∈ {MANUFACTURED_GOOD, KIT}`
   erweitert via ADR-0019; ADR-0019 als autoritäre `kind`-Gating-Quelle in Abhängigkeiten
   eingetragen.

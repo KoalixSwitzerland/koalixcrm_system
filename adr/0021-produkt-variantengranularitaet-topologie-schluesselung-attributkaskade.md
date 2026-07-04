@@ -1,7 +1,7 @@
 # ADR-0021: Produkt-Variantengranularität — Topologie, Schlüsselung und Attribut-Vererbungskaskade
 
 ## Status
-Proposed
+Accepted
 
 ## Context
 
@@ -238,6 +238,31 @@ ADR-0009-Amendment 2026-06-28 weiterhin `Product`-gekeyt — ist geschlossen:
 Die Schlüsselungskette (`OnHandRecord`, `Batch`, `SerialUnit`, `StockBalance`,
 `StockReservation`) ist damit durchgängig auf `ProductVariant` konsistent.
 
+### Ripple-Liste Komponenten-Variantenauflösung und As-Built-Anker — Status: abgeschlossen (2026-07-04)
+
+UC-0012 (Lücke 1/OQ-0019, Lücke 2/OQ-0020) deckte auf, dass die vorstehende Ripple-Liste
+`ADR-0011` nicht aufführte und dass die Komponenten-Variantenauflösung zwischen `BomItem`
+(Product-Ebene, ADR-0006) und der variantengekeyten Bestandsbuchung ungeklärt blieb. Beide
+Lücken sind geschlossen:
+
+- **ADR-0011** — `StockMovement.variant` wird obligatorisch (schliesst die zuvor
+  ausgelassene Zeile der Ripple-Liste); `aggregation_group`, `parent_serial_unit` und
+  `parent_batch` ergänzen den As-Built-Eltern-Anker für alle `tracking_mode`-Werte. Nachtrag
+  2026-07-04.
+- **ADR-0006** — `BomItem` bleibt Product-gekeyt (unverändert gegenüber der ursprünglichen
+  Festlegung dieses ADR); ergänzt um ein optionales, nicht-bindendes
+  `default_component_variant`-Feld. Nachtrag 2026-07-04.
+- **ADR-0014** — `ProductionOrderComponent.variant` wird obligatorisch; die
+  Komponenten-Variantenauflösung ist dreistufig (explizite Angabe → `BomItem.default_
+  component_variant` → einzige Variante des Komponenten-`Product`) an den Buchungspunkt
+  gebunden, nicht an die BOM-Definition. Nachtrag 2026-07-04.
+
+Die Schlüsselungskette (`OnHandRecord`, `Batch`, `SerialUnit`, `StockBalance`,
+`StockReservation`, `StockMovement`, `ProductionOrderComponent`) ist damit vollständig auf
+`ProductVariant` konsistent; die Bindung der Komponenten-Variante am Buchungspunkt statt an der
+Stücklistendefinition erhält die in diesem ADR getroffene Positionierung von `BillOfMaterials`/
+`BomItem` auf `Product`-Ebene unverändert.
+
 ---
 
 ## Lizenzbeschränkung
@@ -270,7 +295,9 @@ erweitert die getypten EAV-Wertetabellen. `ProductFamily` wird als zusätzliche
 bisher FK → `Product`).
 
 **ADR-0006 (Beschaffung und Stücklisten):** `BillOfMaterials` verbleibt auf `Product`-Ebene;
-unverändert.
+unverändert. `BomItem.default_component_variant` (Amendment 2026-07-04) ergänzt einen
+optionalen, nicht-bindenden Vorschlag; die Komponenten-Variantenauflösung selbst bindet erst am
+Buchungspunkt (ADR-0011, ADR-0014).
 
 **ADR-0007 (Dienstleistungsprofil):** `ServiceProfile` verbleibt auf `Product`-Ebene;
 unverändert.
@@ -293,6 +320,16 @@ einer konkreten SKU.
 erhält die Variantenschlüsselung transitiv über `SerialUnit` und `StockReservation` (Amendment
 2026-07-04).
 
+**ADR-0011 (Lager- und Lebenszyklus-Ereignis-Log):** `StockMovement.variant` FK →
+`ProductVariant`, obligatorisch (Amendment 2026-07-04); vervollständigt die Ripple-Liste, die
+diese Entität zuvor ausliess. `aggregation_group`, `parent_serial_unit` und `parent_batch`
+(Amendment 2026-07-04) lösen die As-Built-Eltern-Anker-Frage für `tracking_mode ∈ {NONE,
+BATCH}`.
+
+**ADR-0014 (Montage/Kitting und geteilter Bestand):** `ProductionOrderComponent.variant` FK →
+`ProductVariant`, obligatorisch (Amendment 2026-07-04); Komponenten-Variantenauflösung erfolgt
+dreistufig am Buchungspunkt, nicht an der BOM-Definition.
+
 **ADR-0019 (Produkt-`kind`-Invarianten):** Die Invariante, dass alle Produkte einer
 `ProductFamily` denselben `kind` tragen, wird in der Applikationsschicht durch
 `ProductKindPolicy` (ADR-0019) durchgesetzt.
@@ -301,13 +338,22 @@ erhält die Variantenschlüsselung transitiv über `SerialUnit` und `StockReserv
 der hier definierten Kaskade (Variante → Produkt → Familie/AttributeSet).
 
 ## Changelog
-- 2026-06-28: Erstentscheidung (Status: Proposed). Fixiert die 3-Ebenen-Topologie,
-  Schlüsselung, Attribut-Vererbungskaskade, zweiwertige Zustandssemantik, Option A und
-  Validierungs-Bindung. Korrigiert ADR-0003 (Zeilen 70–73) via Amendment; erweitert ADR-0004
-  (Option A, Family-Achse), ADR-0005 (ProductPrice → Variant) und ADR-0009 (OnHandRecord →
-  Variant autoritativ, tracking_mode → Variant) via Amendment.
+- 2026-07-04: Ratifiziert (Status: Proposed → Accepted). Validiert durch UC-0011/UC-0012 und
+  die nun vollständige Keying-Ripple über ADR-0006, ADR-0010, ADR-0011, ADR-0012, ADR-0013 und
+  ADR-0014.
+- 2026-07-04: Ripple-Liste Komponenten-Variantenauflösung und As-Built-Anker (UC-0012 Lücke
+  1/OQ-0019, Lücke 2/OQ-0020) abgeschlossen: ADR-0011 (`StockMovement.variant` obligatorisch,
+  `aggregation_group`/`parent_serial_unit`/`parent_batch`), ADR-0006
+  (`BomItem.default_component_variant`, optional/nicht-bindend) und ADR-0014
+  (`ProductionOrderComponent.variant` obligatorisch, dreistufige Auflösung) via Amendment
+  korrigiert. Siehe §Ripple-Liste Komponenten-Variantenauflösung und As-Built-Anker.
 - 2026-07-04: Ripple-Liste Lager-/Serien-/Reservierungsdomäne (use_case_0007 Lücke 6)
   abgeschlossen: ADR-0012 (`Batch`/`SerialUnit` → Variant), ADR-0010 (`StockBalance`/
   `StockReservation` → Variant, `free_windows()`-Signatur) und ADR-0013 (transitive
   Variantenschlüsselung über `SerialUnit`/`StockReservation`, keine eigene FK-Änderung) via
   Amendment korrigiert. Siehe §Folge-Aufgaben.
+- 2026-06-28: Erstentscheidung (Status: Proposed). Fixiert die 3-Ebenen-Topologie,
+  Schlüsselung, Attribut-Vererbungskaskade, zweiwertige Zustandssemantik, Option A und
+  Validierungs-Bindung. Korrigiert ADR-0003 (Zeilen 70–73) via Amendment; erweitert ADR-0004
+  (Option A, Family-Achse), ADR-0005 (ProductPrice → Variant) und ADR-0009 (OnHandRecord →
+  Variant autoritativ, tracking_mode → Variant) via Amendment.

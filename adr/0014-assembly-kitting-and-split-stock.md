@@ -112,9 +112,9 @@ nullable — Auftragsreferenz), `document_id` (PositiveIntegerField, nullable).
 **`ProductionOrderComponent`** (workspace-scoped) — Eine Komponentenzeile eines
 `ProductionOrder`.
 Felder: FK auf `ProductionOrder`, FK auf `BomItem` (ADR-0006), FK auf `Product` (ADR-0003,
-Komponente), FK auf `ProductVariant` (ADR-0003, nullable), FK auf `Batch` (ADR-0012, nullable),
-`planned_qty` (Dezimal), `actual_qty` (Dezimal), `uom` (FK `core.Unit`), FK auf `StockReservation`
-(ADR-0010, nullable — aktive Komponentenreservierung).
+Komponente), FK auf `ProductVariant` (ADR-0003, obligatorisch — Nachtrag 2026-07-04, OQ-0019),
+FK auf `Batch` (ADR-0012, nullable), `planned_qty` (Dezimal), `actual_qty` (Dezimal), `uom`
+(FK `core.Unit`), FK auf `StockReservation` (ADR-0010, nullable — aktive Komponentenreservierung).
 
 **`Product.kit_mode`** (additives Feld auf `Product` aus ADR-0003, gilt nur für `kind = KIT`) —
 Enum: `EXPLODE_ON_PICK` (virtuelle Explosion zum Pickezeitpunkt aus Snapshot), `PREASSEMBLE`
@@ -135,17 +135,26 @@ entspricht; bei Abweichung erfolgt synchrone Neuberechnung.
 ## Bestandsfluss bei Fertigungsabschluss
 
 1. `ProductionOrder`-Status wechselt zu `IN_PROGRESS`.
-2. `StockReservation`-Einträge (ADR-0010) für alle Komponenten werden mit
-   `reservation_type = RESERVED_FOR_DOCUMENT` und FK auf `ProductionOrder` angelegt.
+2. `ProductionOrderComponent.variant` (obligatorisch, Nachtrag 2026-07-04) wird nach der
+   dreistufigen Reihenfolge aus ADR-0011 (Nachtrag 2026-07-04, OQ-0019) aufgelöst — explizite
+   Angabe, dann `BomItem.default_component_variant` (ADR-0006, Nachtrag 2026-07-04), dann die
+   einzige `ProductVariant` des Komponenten-`Product` — bevor `StockReservation`-Einträge
+   (ADR-0010) mit `reservation_type = RESERVED_FOR_DOCUMENT` und FK auf `ProductionOrder`
+   angelegt werden.
 3. Physische Entnahme: `StockMovement` vom Typ `OBJECT_EVENT`, `business_step = 'picking'`,
-   Mengen der Komponenten-`OnHandRecord`-Zeilen werden reduziert.
+   `variant` trägt die in Schritt 2 aufgelöste Komponenten-`ProductVariant`. Mengen der
+   Komponenten-`OnHandRecord`-Zeilen werden reduziert.
 4. Fertigstellung: `StockMovement` vom Typ `TRANSFORMATION_EVENT` — alle Quell-Events der
    Komponentenentnahmen sind im selben EPCIS-Transformationsereignis gebündelt; eine neue
    `OnHandRecord`-Zeile des Fertigprodukts entsteht.
 5. As-Built-Erfassung: Die Applikationsschicht emittiert ein oder mehrere `StockMovement`-Zeilen
-   vom Typ `AGGREGATION_EVENT`, die den Eltern-`SerialUnit`-FK (Fertigprodukt) mit den
-   Kind-Komponenten-Lots/Serien verknüpfen. Diese Zeilen sind die Quelle der Wahrheit für
-   As-Built-Provenienz und Rückrufverfolgung.
+   vom Typ `AGGREGATION_EVENT`, die einen gemeinsamen `aggregation_group`-Wert (ADR-0011,
+   Nachtrag 2026-07-04, OQ-0020) tragen und — sofern das Fertigprodukt-`tracking_mode` dies
+   zulässt — zusätzlich `parent_serial_unit` (`tracking_mode = SERIAL`) oder `parent_batch`
+   (`tracking_mode = BATCH`) mit den Kind-Komponenten-Lots/Serien verknüpfen. Bei
+   `tracking_mode = NONE` ist `aggregation_group` der alleinige Anker; kein
+   `parent_serial_unit`/`parent_batch` wird gesetzt. Diese Zeilen sind die Quelle der Wahrheit
+   für As-Built-Provenienz und Rückrufverfolgung, unabhängig vom Fertigprodukt-`tracking_mode`.
 6. `StockReservation`-Einträge werden als `FULFILLED` geschlossen; `StockBalance`-Felder
    (ADR-0010) werden aktualisiert.
 
@@ -198,7 +207,10 @@ zum `kind`-Enum.
 
 **ADR-0006 (Beschaffung und Stücklisten):** `ProductionOrder` referenziert `BillOfMaterials`;
 `ProductionOrderComponent` referenziert `BomItem`. ADR-0006 definiert: „`BomItem` unterstützt
-Menge, Ausschuss-Prozentsatz und Alternativkomponenten nach ISA-95 Part 2."
+Menge, Ausschuss-Prozentsatz und Alternativkomponenten nach ISA-95 Part 2." `BomItem` bleibt
+Product-gekeyt; `BomItem.default_component_variant` (ADR-0006, Nachtrag 2026-07-04) liefert
+einen optionalen, nicht-bindenden Vorschlag für die in diesem ADR (Nachtrag 2026-07-04)
+festgelegte Komponenten-Variantenauflösung.
 
 **ADR-0009 (Lager-Domänen-Backbone):** `ProductionOrderComponent` liest und verbraucht
 `OnHandRecord`-Zeilen der Komponenten.
@@ -209,7 +221,10 @@ Menge, Ausschuss-Prozentsatz und Alternativkomponenten nach ISA-95 Part 2."
 **ADR-0011 (Lager- und Lebenszyklus-Ereignis-Log):** Komponentenentnahme als `OBJECT_EVENT`;
 Fertigstellung als `TRANSFORMATION_EVENT`; As-Built-BOM als `AGGREGATION_EVENT`. ADR-0011
 definiert: „Jede Lagerbewegung und jeder Lebenszyklus-Touch einer Einheit wird als
-unveränderlicher `StockMovement`-Datensatz gespeichert."
+unveränderlicher `StockMovement`-Datensatz gespeichert." `StockMovement.variant` ist
+obligatorisch (ADR-0011, Nachtrag 2026-07-04); `aggregation_group`, `parent_serial_unit` und
+`parent_batch` (ADR-0011, Nachtrag 2026-07-04) sind der tracking-mode-unabhängige Eltern-Anker
+für `AGGREGATION_EVENT`-Zeilen dieses ADR.
 
 **ADR-0012 (Lebenszeit, Charge, Los und Seriennummer):** `ProductionOrderComponent` trägt
 optionalen FK auf `Batch` für chargengebundene Komponentenzuordnung; Traceability-Traversierung
@@ -221,6 +236,12 @@ Fertigungsabschluss emittiert werden, sind die Datengrundlage für die As-Built-
 und die Komponentengraph-Traversierung, die ADR-0015 als Lebenszyklus-Abfragepfad definiert.
 
 ## Changelog
+- 2026-07-04: OQ-0019 geschlossen (gemeinsam mit ADR-0006 und ADR-0011):
+  `ProductionOrderComponent.variant` wird obligatorisch; Komponenten-Variantenauflösung folgt
+  der dreistufigen Reihenfolge aus ADR-0011 (explizite Angabe → `BomItem.default_component_variant`
+  → einzige Variante des Komponenten-`Product`). OQ-0020 geschlossen (gemeinsam mit ADR-0011):
+  As-Built-Erfassung nutzt `aggregation_group` als tracking-mode-unabhängigen Anker, ergänzt um
+  `parent_serial_unit`/`parent_batch` bei `tracking_mode ∈ {SERIAL, BATCH}`.
 - 2026-05-03: Erstentscheidung.
 - 2026-05-03: OQ-0007 geschlossen: Celery-Task berechnet abgeflachte BOM-Explosion in
   `BillOfMaterialsExplosion`-Snapshot vor; Pick-Zeitpfad liest Snapshot; weiche Tiefengrenze

@@ -1,7 +1,7 @@
 # ADR-0020: Gemeinsame deklarative Attributvalidierung zwischen Backend und Frontend
 
 ## Status
-Proposed
+Accepted
 
 ## Context
 
@@ -138,12 +138,17 @@ EAV-Attributsystem um feldübergreifende, konditionale Validierungsregeln. Die A
 — neue Attribute und Regeln entstehen ohne Code-Deploy — gilt für das vorliegende ADR
 unverändert. `AttributeSet` ist der natürliche Träger der Regelmetadaten.
 
-**ADR-0021 (geplant — Produktgranularität und Attributkaskade):** Dieses ADR referenziert die
-Variante → Produkt → Familie/AttributeSet-Kaskade als Bindungsebene für Validierungsregeln.
-Sobald ADR-0021 ratifiziert ist, gilt seine Kaskadenregel unmittelbar für die hier beschlossene
-Validierungsarchitektur; dieses ADR bedarf keiner Änderung.
+**ADR-0021 (Produkt-Variantengranularität — Topologie, Schlüsselung und
+Attribut-Vererbungskaskade):** Dieses ADR referenziert die Variante → Produkt →
+Familie/AttributeSet-Kaskade als Bindungsebene für Validierungsregeln. Die Kaskadenregel aus
+ADR-0021 gilt unmittelbar für die hier beschlossene Validierungsarchitektur; dieses ADR bedarf
+keiner Änderung.
 
 ## Changelog
+- 2026-07-04: Ratifiziert (Status: Proposed → Accepted). Validiert durch die Ratifizierung von
+  ADR-0021 (die hier referenzierte Bindungskaskade Variante → Produkt → Familie/AttributeSet
+  ist damit keine geplante, sondern eine akzeptierte Grundlage) und durch UC-0011/UC-0012, die
+  dieselbe Kaskade end-to-end durchlaufen.
 - 2026-06-28: Erstentwurf (Status: Proposed). Fixiert den Grundsatz der gemeinsamen
   deklarativen Attributvalidierung (Regeln als Daten, Backend-Autorität, duale Auswertung,
   Konformitätstestsuite). Regelformat, Operatorensatz und Implementierung sind explizit
