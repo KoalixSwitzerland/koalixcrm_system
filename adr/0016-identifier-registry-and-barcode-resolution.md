@@ -192,5 +192,59 @@ ist das Zielfeld für SGTIN- und GIAI-Auflösung.
 **ADR-0013 (Miet- und Kundengeführter Bestand):** Workspace-scoped Auflösung ist konsistent
 mit dem mandantenspezifischen Scoping aus ADR-0001/0013.
 
+**ADR-0021 (Produkt-Variantengranularität):** AI `(01)` GTIN und Freitext-Stufe-2-Regel 3
+lösen gegen `ProductVariant.gtin`/`ProductVariant.sku` auf (Nachtrag 2026-07-04); vollzieht die
+ADR-0021-Ripple-Liste für die Identifier-Registry nach.
+
 ## Changelog
 - 2026-05-04: Erstentscheidung. OQ-0016 geschlossen. UC-0008, UC-0009, UC-0010 als auslösende Use Cases.
+- 2026-07-04: Nachtrag — OQ-0022 geschlossen: AI `(01)` GTIN löst gegen `ProductVariant.gtin`
+  auf (statt `Product.gtin`); Freitext-Stufe-2-Regel 3 löst gegen `ProductVariant.sku` auf
+  (statt `Product.sku`); Antwort-`kind` liefert `product_variant` statt `product`. Siehe
+  Nachtrag 2026-07-04.
+
+---
+
+## Nachtrag (2026-07-04): GTIN- und SKU-Auflösung → `ProductVariant` (ADR-0021, OQ-0022)
+
+ADR-0021 platziert `gtin` und `sku` auf `ProductVariant`-Ebene ("GTIN ist die handelsseitige
+Einheiten-ID; verschiedene Verpackungsgrößen tragen je eigene GTINs"; „Lagerhaltungsnummer ist
+variantenspezifisch"). Die ursprüngliche Fassung dieses ADR löst AI `(01)` GTIN gegen
+`Product.gtin` und die Freitext-Stufe-2-Regel 3 gegen `Product.sku` auf; keine der beiden
+ADR-0021-Ripple-Listen nannte ADR-0016. UC-0009 (Änderungsprotokoll 2026-07-04, BAC-1) setzt
+in seinem Auflösungsschritt bereits `ProductVariant.gtin` voraus und widerspricht damit dem
+bisherigen ADR-0016-Wortlaut.
+
+**Änderung — Stufe 1 (GS1 AI-Parsing):** AI `(01)` GTIN löst gegen `ProductVariant.gtin`
+statt gegen `Product.gtin` auf. Die Zeile `(01) + (21)` SGTIN → `SerialUnit` (über
+`SerialUnit.global_uid`) bleibt unverändert; `SerialUnit` ist bereits über ADR-0012 (Amendment
+2026-07-04) auf `ProductVariant` geschlüsselt.
+
+**Änderung — Stufe 2 (Freitext), Regel 3:** Der dritte Freitext-Abgleichsschritt löst gegen
+`ProductVariant.sku` statt gegen `Product.sku` auf. Die Regeln 1 (`Location.external_ref`) und
+2 (`SerialUnit.global_uid`) bleiben unverändert.
+
+**Sweep der übrigen Auflösungsregeln gegen die ADR-0021-Schlüsselungstabelle:** Die verbleibenden
+Zeilen von Stufe 1 — AI `(00)` SSCC → `HandlingUnit.sscc` (ADR-0009) und AI `(414)` GLN →
+`Location.external_ref` (ADR-0009) — referenzieren keine `Product`- oder
+`ProductVariant`-Felder und bleiben unverändert. AI `(8003)` GIAI → `SerialUnit.global_uid`
+bleibt aus demselben Grund wie SGTIN unverändert (transitiv bereits variantengekeyt über
+ADR-0012). Kein weiteres in ADR-0016 referenziertes Feld verweist auf `Product`-Ebene; die
+Schlüsselungstabelle in ADR-0021 platziert nur `gtin`, `sku` und `mpn` auf `ProductVariant` —
+`mpn` wird von ADR-0016 nicht referenziert und erfordert keine Änderung.
+
+**Antwortformat:** Der Erfolgsantwort-`kind`-Wert für einen GTIN- oder SKU-Treffer wechselt
+von `"product"` auf `"product_variant"`; `id` referenziert die getroffene `ProductVariant`,
+nicht mehr das übergeordnete `Product`. Die übrigen `kind`-Werte (`handling_unit`,
+`serial_unit`, `location`) bleiben unverändert.
+
+**Workspace-Scoping:** Die Ausnahme „`Product.gtin` ist katalogweit gültig (nicht
+workspace-gebunden)" überträgt sich unverändert auf `ProductVariant.gtin`: `ProductVariant` ist
+zwar workspace-scoped (ADR-0021), die GTIN-Auflösung bleibt jedoch katalogweit — ein
+GTIN-Treffer liefert eine `ProductVariant`-Referenz unabhängig vom aufrufenden Workspace,
+impliziert aber weiterhin keinen `OnHandRecord`-Kontext (dieser bleibt workspace-scoped). Die
+Freitext-SKU-Auflösung (Regel 3) bleibt workspace-scoped, da sie bereits vor diesem Nachtrag
+workspace-scoped war (`Product.sku` im `Product`-Workspace-Scope geführt) und `ProductVariant`
+ebenfalls workspace-scoped ist.
+
+Damit ist OQ-0022 geschlossen; siehe ADR-0021 §Ripple-Liste.

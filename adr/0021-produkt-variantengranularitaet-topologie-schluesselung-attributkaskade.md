@@ -263,6 +263,26 @@ Die Schlüsselungskette (`OnHandRecord`, `Batch`, `SerialUnit`, `StockBalance`,
 Stücklistendefinition erhält die in diesem ADR getroffene Positionierung von `BillOfMaterials`/
 `BomItem` auf `Product`-Ebene unverändert.
 
+### Ripple-Liste Wareneingang und Identifier-Registry — Status: abgeschlossen (2026-07-04)
+
+OQ-0021 und OQ-0022 deckten auf, dass beide vorstehenden Ripple-Listen `ADR-0017` und
+`ADR-0016` nicht aufführten, obwohl `GoodsReceiptLine.product` und die GS1-AI-/Freitext-GTIN-/
+SKU-Auflösung weiterhin `Product`-gekeyt waren. Beide Lücken sind geschlossen:
+
+- **ADR-0017** — `GoodsReceiptLine.product` wird zu `GoodsReceiptLine.variant`, FK →
+  `ProductVariant`, obligatorisch; die Chargenzuordnung (`GoodsReceiptLine.batch`) bleibt über
+  eine Applikationsschicht-Invariante konsistent zur selben `ProductVariant`. Nachtrag
+  2026-07-04.
+- **ADR-0016** — AI `(01)` GTIN löst gegen `ProductVariant.gtin` statt `Product.gtin` auf;
+  Freitext-Stufe-2-Regel 3 löst gegen `ProductVariant.sku` statt `Product.sku` auf; die
+  Antwort-`kind` liefert `product_variant` statt `product`. Die übrigen Auflösungsregeln
+  (SSCC → `HandlingUnit`, SGTIN/GIAI → `SerialUnit`, GLN → `Location`) referenzieren kein
+  `Product`-Feld und bleiben unverändert. Nachtrag 2026-07-04.
+
+Die Schlüsselungskette (`OnHandRecord`, `Batch`, `SerialUnit`, `StockBalance`,
+`StockReservation`, `StockMovement`, `ProductionOrderComponent`, `GoodsReceiptLine`, GTIN-/
+SKU-Identifier-Auflösung) ist damit vollständig auf `ProductVariant` konsistent.
+
 ---
 
 ## Lizenzbeschränkung
@@ -330,6 +350,14 @@ BATCH}`.
 `ProductVariant`, obligatorisch (Amendment 2026-07-04); Komponenten-Variantenauflösung erfolgt
 dreistufig am Buchungspunkt, nicht an der BOM-Definition.
 
+**ADR-0016 (Identifier-Registry und Barcode-Auflösung):** AI `(01)` GTIN und Freitext-Stufe-2-
+Regel 3 lösen gegen `ProductVariant.gtin`/`ProductVariant.sku` auf (Nachtrag 2026-07-04);
+vervollständigt die Ripple-Liste, die diese Entität zuvor ausliess.
+
+**ADR-0017 (GoodsReceipt als Prozess-Aggregat):** `GoodsReceiptLine.variant` FK →
+`ProductVariant`, obligatorisch (Nachtrag 2026-07-04); vervollständigt die Ripple-Liste, die
+diese Entität zuvor ausliess.
+
 **ADR-0019 (Produkt-`kind`-Invarianten):** Die Invariante, dass alle Produkte einer
 `ProductFamily` denselben `kind` tragen, wird in der Applikationsschicht durch
 `ProductKindPolicy` (ADR-0019) durchgesetzt.
@@ -338,6 +366,11 @@ dreistufig am Buchungspunkt, nicht an der BOM-Definition.
 der hier definierten Kaskade (Variante → Produkt → Familie/AttributeSet).
 
 ## Changelog
+- 2026-07-04: Ripple-Liste Wareneingang und Identifier-Registry (OQ-0021, OQ-0022)
+  abgeschlossen: ADR-0017 (`GoodsReceiptLine.variant` obligatorisch statt `GoodsReceiptLine.
+  product`) und ADR-0016 (AI `(01)` GTIN und Freitext-Regel 3 lösen gegen `ProductVariant.gtin`/
+  `ProductVariant.sku` statt `Product.gtin`/`Product.sku` auf) via Nachtrag korrigiert. Siehe
+  §Ripple-Liste Wareneingang und Identifier-Registry.
 - 2026-07-04: Ratifiziert (Status: Proposed → Accepted). Validiert durch UC-0011/UC-0012 und
   die nun vollständige Keying-Ripple über ADR-0006, ADR-0010, ADR-0011, ADR-0012, ADR-0013 und
   ADR-0014.

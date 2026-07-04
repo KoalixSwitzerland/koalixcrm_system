@@ -366,3 +366,46 @@ Keine separate As-Built-Aggregatentität wird eingeführt (ADR-0014 lehnt diese 
 bereits ab); die Lösung bleibt vollständig innerhalb der `StockMovement`-Tabelle und ist über
 `aggregation_group` als interne URN EPCIS-2.0-`parentID`-exportfähig, auch ohne physischen
 Trägeridentifikator. Siehe ADR-0011, Amendment 2026-07-04, und ADR-0014, Nachtrag 2026-07-04.
+
+---
+
+## OQ-0021 — `GoodsReceiptLine.product` fehlt in der ADR-0021-Ripple-Liste (Product statt ProductVariant)
+
+- **Raised:** 2026-07-04
+- **Context:** REQ-0027 (Wareneingang als Prozess-Aggregat), ADR-0017 (GoodsReceipt als Prozess-Aggregat), ADR-0021 (Produkt-Variantengranularität), UC-0010
+- **Frage:** ADR-0017 definiert `GoodsReceiptLine.product` als FK auf `Product`. Die ADR-0021-Ripple-Liste (Ripple-Liste Lager-/Serien-/Reservierungsdomäne und Ripple-Liste Komponenten-Variantenauflösung und As-Built-Anker) führt `OnHandRecord`, `Batch`, `SerialUnit`, `StockBalance`, `StockReservation`, `StockMovement` und `ProductionOrderComponent` als durchgängig auf `ProductVariant` umgestellt auf, nennt `GoodsReceiptLine`/ADR-0017 jedoch nicht. UC-0010 setzt in seinem Beispiel-Payload (`POST /api/stock/goods-receipts/`) bereits `product_variant_id` je Position voraus und widerspricht damit der aktuellen ADR-0017-Feldliste. Soll `GoodsReceiptLine.product` zu einem obligatorischen FK auf `ProductVariant` geändert werden (analog zu `StockMovement.variant`, ADR-0011 Amendment OQ-0019), und wie wird der Chargenbezug (`GoodsReceiptLine.batch`) mit der Variantenschlüsselung konsistent gehalten?
+- **Blocks:** REQ-0027 AC-2 (variantengenaue Fassung von `GoodsReceiptLine`), UC-0010 BAC-1/BAC-3/BAC-6 (Konsistenz des Payload-Schemas mit dem tatsächlichen Datenmodell)
+- **Zuständig:** `kxcrm-architect` entscheidet über ein ADR-0017-Amendment; `kxcrm-requirements-engineer` aktualisiert REQ-0027 nach Entscheid.
+
+**Status:** Geschlossen (2026-07-04) — `GoodsReceiptLine.product` (FK → `Product`) wird zu
+`GoodsReceiptLine.variant` (FK → `ProductVariant`, obligatorisch); der Bezug zum abstrakten
+Katalogobjekt bleibt über den FK-Pfad `GoodsReceiptLine.variant → ProductVariant → Product`
+erreichbar. Der Chargenbezug bleibt konsistent: die Applikationsschicht erzwingt, dass eine
+gesetzte `GoodsReceiptLine.batch` zur selben `ProductVariant` gehört wie
+`GoodsReceiptLine.variant` (kein Datenbank-Constraint). Der beim `COMPLETED`-Übergang erzeugte
+`StockMovement`-Datensatz übernimmt `variant` direkt von `GoodsReceiptLine.variant`, ohne
+eigene Variantenauflösung am Buchungspunkt. Siehe ADR-0017, Nachtrag 2026-07-04, sowie
+ADR-0021 §Ripple-Liste Wareneingang und Identifier-Registry.
+
+---
+
+## OQ-0022 — Identifier-Registry: GTIN-Auflösungsziel `Product` (ADR-0016) vs. `ProductVariant` (ADR-0021)
+
+- **Raised:** 2026-07-04
+- **Context:** REQ-0026 (Identifier-Registry und Barcode-Auflösung), ADR-0016, ADR-0021, UC-0009
+- **Frage:** ADR-0016 definiert die GS1-AI-Stufe-1-Auflösung für `(01)` GTIN gegen `Product.gtin`. Die Schlüsselungstabelle in ADR-0021 platziert `gtin` jedoch auf `ProductVariant`-Ebene ("GTIN ist die handelsseitige Einheiten-ID; verschiedene Verpackungsgrößen tragen je eigene GTINs"), und UC-0009 (Änderungsprotokoll 2026-07-04, BAC-1) setzt bereits eine Auflösung gegen `ProductVariant.gtin` voraus. ADR-0016 ist von keiner der beiden ADR-0021-Ripple-Listen erfasst. Soll ADR-0016 dahingehend geändert werden, dass AI `(01)` GTIN und die Freitext-Stufe-2-Regel 3 (`Product.sku`) gegen `ProductVariant.gtin`/`ProductVariant.sku` statt gegen `Product` auflösen?
+- **Blocks:** REQ-0026 AC-2 (variantengenaue Fassung der GS1-AI-Auflösung), UC-0009 BAC-1 (Konsistenz mit dem tatsächlich zitierten ADR-0016-Wortlaut)
+- **Zuständig:** `kxcrm-architect` entscheidet über ein ADR-0016-Amendment; `kxcrm-requirements-engineer` aktualisiert REQ-0026 nach Entscheid.
+
+**Status:** Geschlossen (2026-07-04) — AI `(01)` GTIN löst gegen `ProductVariant.gtin` statt
+`Product.gtin` auf; die Freitext-Stufe-2-Regel 3 löst gegen `ProductVariant.sku` statt
+`Product.sku` auf; der Erfolgsantwort-`kind`-Wert für einen GTIN-/SKU-Treffer wechselt von
+`"product"` auf `"product_variant"` (`id` referenziert die getroffene `ProductVariant`). Die
+übrigen Auflösungsregeln (AI `(00)` SSCC → `HandlingUnit.sscc`, AI `(01)`+`(21)` SGTIN und AI
+`(8003)` GIAI → `SerialUnit.global_uid`, AI `(414)` GLN → `Location.external_ref`, Freitext-
+Regeln 1/2 → `Location.external_ref`/`SerialUnit.global_uid`) referenzieren kein `Product`-Feld
+und bleiben unverändert; ein Sweep gegen die ADR-0021-Schlüsselungstabelle bestätigt, dass nur
+`gtin` und `sku` betroffen sind (`mpn`, ebenfalls variantengekeyt, wird von ADR-0016 nicht
+referenziert). Die katalogweite (nicht workspace-gebundene) Sonderstellung der GTIN-Auflösung
+überträgt sich unverändert von `Product.gtin` auf `ProductVariant.gtin`. Siehe ADR-0016,
+Nachtrag 2026-07-04, sowie ADR-0021 §Ripple-Liste Wareneingang und Identifier-Registry.

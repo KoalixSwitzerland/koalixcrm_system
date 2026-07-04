@@ -174,5 +174,49 @@ trägt einen optionalen FK auf `Batch`.
 **ADR-0014 (Montage/Kitting und geteilter Bestand):** `GoodsReceipt` folgt dem in ADR-0014
 mit `ProductionOrder` etablierten Aggregat-Muster für mehrstufige Lagervorgänge.
 
+**ADR-0021 (Produkt-Variantengranularität):** `GoodsReceiptLine.variant` FK →
+`ProductVariant`, obligatorisch (Nachtrag 2026-07-04); vollzieht die ADR-0021-Ripple-Liste für
+das Wareneingangs-Aggregat nach.
+
 ## Changelog
 - 2026-05-04: Erstentscheidung. OQ-0018 geschlossen. UC-0010 als auslösender Use Case; UC-0008, UC-0009 als referenzierende Use Cases.
+- 2026-07-04: Nachtrag — OQ-0021 geschlossen: `GoodsReceiptLine.product` (FK → `Product`)
+  wird zu `GoodsReceiptLine.variant` (FK → `ProductVariant`, obligatorisch); vollzieht die
+  ADR-0021-Schlüsselung nach, die für `StockMovement.variant` bereits obligatorisch gilt
+  (ADR-0011, Nachtrag/Amendment 2026-07-04). Siehe Nachtrag 2026-07-04.
+
+---
+
+## Nachtrag (2026-07-04): `GoodsReceiptLine` → `ProductVariant` als autoritativer Schlüssel (ADR-0021, OQ-0021)
+
+ADR-0021 legt fest, dass `sku`, `gtin`, `mpn` und alle Lagertatsachen auf `ProductVariant`
+geschlüsselt sind; `OnHandRecord`, `Batch`, `SerialUnit`, `StockBalance`, `StockReservation`,
+`StockMovement` und `ProductionOrderComponent` sind entsprechend umgestellt (ADR-0021,
+Ripple-Listen). Die ursprüngliche Feldliste dieses ADR führte `GoodsReceiptLine.product` als
+FK auf `Product`; keine der beiden ADR-0021-Ripple-Listen nannte ADR-0017. Da der beim
+`COMPLETED`-Übergang erzeugte `StockMovement`-Datensatz (siehe §Zustandsübergang COMPLETED)
+`StockMovement.variant` befüllen muss (ADR-0011, obligatorisch seit Nachtrag 2026-07-04,
+OQ-0019), kann eine `GoodsReceiptLine` ohne konkrete `ProductVariant` die Buchung nicht
+eindeutig erzeugen, sobald ein `Product` mehr als eine `ProductVariant` trägt. UC-0010 setzt in
+seinem Payload-Beispiel (`POST /api/stock/goods-receipts/`) bereits `product_variant_id` je
+Position voraus, was der bisherigen `Product`-FK-Feldliste widerspricht.
+
+**Änderung:** `GoodsReceiptLine.product` (FK → `Product`) wird zu `GoodsReceiptLine.variant`
+(FK → `ProductVariant`, obligatorisch). Der Bezug zum abstrakten Katalogobjekt bleibt über den
+FK-Pfad `GoodsReceiptLine.variant → ProductVariant → Product` erreichbar; kein direktes
+`Product`-Feld verbleibt auf `GoodsReceiptLine`.
+
+**Chargenbezug (`GoodsReceiptLine.batch`):** `Batch` trägt seit ADR-0012 (Amendment
+2026-07-04) einen obligatorischen FK auf `ProductVariant`. Die Applikationsschicht erzwingt,
+dass eine gesetzte `GoodsReceiptLine.batch` zur selben `ProductVariant` gehört wie
+`GoodsReceiptLine.variant` (`GoodsReceiptLine.batch.variant_id == GoodsReceiptLine.variant_id`);
+kein Datenbank-Constraint. Damit bleibt die Chargenzuordnung entlang derselben
+Variantenschlüsselung konsistent, die `Batch` bereits durchgängig trägt.
+
+**Auswirkung auf die COMPLETED-Buchung:** Der beim `COMPLETED`-Übergang erzeugte
+`StockMovement`-Datensatz übernimmt `variant` direkt von `GoodsReceiptLine.variant`; keine
+Variantenauflösung am Buchungspunkt ist erforderlich (im Unterschied zur dreistufigen
+Komponenten-Variantenauflösung aus ADR-0006/ADR-0011/ADR-0014, die für nicht explizit
+gewählte BOM-Komponenten gilt — der Wareneingang kennt die empfangene Variante immer explizit).
+
+Damit ist OQ-0021 geschlossen; siehe ADR-0021 §Ripple-Liste.
