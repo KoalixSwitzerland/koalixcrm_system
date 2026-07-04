@@ -220,6 +220,24 @@ Der `kxcrm-requirements-engineer` korrigiert:
 - **REQ-0002 AC-3** — Varianten-Achsenwerte sind abzugleichen mit Option A (nullable
   `variant_id` auf EAV-Wertetabellen).
 
+### Ripple-Liste Lager-/Serien-/Reservierungsdomäne — Status: abgeschlossen (2026-07-04)
+
+Die in `use_cases/use_case_0007.md` (Lücke 6) eskalierte Restlücke — `StockReservation`
+(ADR-0010), `RentalAssignment`/`SerialUnit` (ADR-0012, ADR-0013) blieben nach der
+ADR-0009-Amendment 2026-06-28 weiterhin `Product`-gekeyt — ist geschlossen:
+
+- **ADR-0012** — `Batch` und `SerialUnit` FK wechselt von `Product` auf `ProductVariant`.
+  Amendment 2026-07-04.
+- **ADR-0010** — `StockBalance` und `StockReservation` FK wechselt von `Product` auf
+  `ProductVariant`; `free_windows()`-Signatur und Verfügbarkeits-Endpunkt angepasst.
+  Amendment 2026-07-04.
+- **ADR-0013** — Keine eigene FK-Änderung erforderlich; `RentalAssignment` erhält die
+  Variantenschlüsselung transitiv über `SerialUnit` und `StockReservation`. Amendment 2026-07-04
+  dokumentiert dies als Klarstellung.
+
+Die Schlüsselungskette (`OnHandRecord`, `Batch`, `SerialUnit`, `StockBalance`,
+`StockReservation`) ist damit durchgängig auf `ProductVariant` konsistent.
+
 ---
 
 ## Lizenzbeschränkung
@@ -264,6 +282,17 @@ unverändert.
 autoritative Lager-Schlüssel; der bisherige Zustand (nullable FK auf Variant neben FK auf
 Product) ist durch dieses ADR aufgelöst. `tracking_mode` lebt auf `ProductVariant`.
 
+**ADR-0010 (Lagerbestandszustände und Reservierungen):** `StockBalance` und `StockReservation`
+FK → `ProductVariant` (Amendment 2026-07-04); folgt derselben Umstellung wie `OnHandRecord`.
+
+**ADR-0012 (Lebenszeit, Charge, Los und Seriennummer):** `Batch` und `SerialUnit` FK →
+`ProductVariant` (Amendment 2026-07-04); eine Seriennummer identifiziert eine physische Einheit
+einer konkreten SKU.
+
+**ADR-0013 (Miet- und Kundengeführter Bestand):** Keine eigene FK-Änderung; `RentalAssignment`
+erhält die Variantenschlüsselung transitiv über `SerialUnit` und `StockReservation` (Amendment
+2026-07-04).
+
 **ADR-0019 (Produkt-`kind`-Invarianten):** Die Invariante, dass alle Produkte einer
 `ProductFamily` denselben `kind` tragen, wird in der Applikationsschicht durch
 `ProductKindPolicy` (ADR-0019) durchgesetzt.
@@ -277,3 +306,8 @@ der hier definierten Kaskade (Variante → Produkt → Familie/AttributeSet).
   Validierungs-Bindung. Korrigiert ADR-0003 (Zeilen 70–73) via Amendment; erweitert ADR-0004
   (Option A, Family-Achse), ADR-0005 (ProductPrice → Variant) und ADR-0009 (OnHandRecord →
   Variant autoritativ, tracking_mode → Variant) via Amendment.
+- 2026-07-04: Ripple-Liste Lager-/Serien-/Reservierungsdomäne (use_case_0007 Lücke 6)
+  abgeschlossen: ADR-0012 (`Batch`/`SerialUnit` → Variant), ADR-0010 (`StockBalance`/
+  `StockReservation` → Variant, `free_windows()`-Signatur) und ADR-0013 (transitive
+  Variantenschlüsselung über `SerialUnit`/`StockReservation`, keine eigene FK-Änderung) via
+  Amendment korrigiert. Siehe §Folge-Aufgaben.

@@ -229,3 +229,41 @@ nur im Legacy-Migrationszustand möglich (Amendment OQ-0013, ADR-0010).
   Kundengeführter Bestand" aktualisiert. Eigentumssemantik-Tabelle um `CUSTOMER_OWNED`
   erweitert.
 - 2026-05-04: OQ-0013 geschlossen: `RentalAssignment` als Spezialisierung von `StockReservation` positioniert; `StockReservation` ist alleinige Belegungsquelle für den Verfügbarkeitskalender; neues Pflichtfeld `FK auf StockReservation` auf `RentalAssignment` eingeführt; Überdue-Blockierungsregel und Doppelzählungsschutz festgelegt. Siehe Amendment 2026-05-04.
+- 2026-07-04: Amendment — Klarstellung: `RentalAssignment` trägt keinen direkten FK auf
+  `Product` und benötigt daher kein eigenes Feld-Amendment zu ADR-0021; die
+  Variantenschlüsselung wirkt transitiv über `SerialUnit` (ADR-0012, Amendment 2026-07-04) und
+  `StockReservation` (ADR-0010, Amendment 2026-07-04). Siehe Amendment 2026-07-04.
+
+---
+
+## Amendment 2026-07-04 — Transitive Variantenschlüsselung über `SerialUnit` und `StockReservation` (ADR-0021)
+
+ADR-0021 verschiebt die autoritative Lager-Schlüsselung von `Product` auf `ProductVariant`; die
+Amendments 2026-06-28 (ADR-0009, `OnHandRecord`), 2026-07-04 (ADR-0012, `Batch`/`SerialUnit`)
+und 2026-07-04 (ADR-0010, `StockBalance`/`StockReservation`) vollziehen diese Umstellung für
+alle unmittelbar am Bestand beteiligten Entitäten. `RentalAssignment` (oben, Entitäten-Abschnitt)
+trägt keinen eigenen FK auf `Product` oder `ProductVariant`: Es referenziert `SerialUnit`
+(nullable), `OnHandRecord` (nullable), die erfüllte `StockReservation` (Pflichtfeld, Amendment
+OQ-0013) und `Party`. Alle drei Bestandsreferenzen sind durch die oben genannten Amendments
+bereits variantengekeytet.
+
+### Korrekte Aussage
+
+`RentalAssignment` erfordert keine eigene Feldänderung. Die Variantenschlüsselung wirkt
+transitiv: `RentalAssignment → SerialUnit → ProductVariant` und
+`RentalAssignment → StockReservation → ProductVariant` liefern in jedem Fall dieselbe
+`ProductVariant` (die Konsistenz dieser beiden Pfade wird durch die
+`FULFILLED`/`kind = RENTAL`-Kopplung in Amendment OQ-0013 sichergestellt: eine
+`RentalAssignment` verweist nur auf eine `StockReservation`, deren `serial_unit`-FK dieselbe
+Einheit trägt wie der `RentalAssignment.serial_unit`-FK). Die Eigentumssemantik-Tabelle
+(`owner_type`, oben) bleibt unverändert, da `owner_type` auf `OnHandRecord` lebt und dort
+bereits durch ADR-0009 (Amendment 2026-06-28) auf `ProductVariant`-Ebene geführt wird.
+
+### Migrationsbedeutung
+
+Da `RentalAssignment` keine eigene FK-Änderung erfährt, ist für diese Entität keine gesonderte
+Migration erforderlich; sie profitiert unverändert von der Standardvariante, die die
+v2.0.0-Migration (REQ-0007) für `SerialUnit`, `OnHandRecord` und `StockReservation` anlegt.
+
+ADR-0021 ist die autoritative Quelle für die Schlüsselung; das vorliegende Amendment
+dokumentiert (das Ausbleiben einer) Auswirkung auf ADR-0013.
