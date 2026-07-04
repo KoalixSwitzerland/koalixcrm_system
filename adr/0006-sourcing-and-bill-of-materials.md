@@ -111,6 +111,27 @@ exponiert; keine direkte Modell-Referenz im Frontend.
 auf `Product`. `BillOfMaterials` gilt ausschließlich für `Product` mit `kind = MANUFACTURED_GOOD`
 (ADR-0003, `kind`-Enum). `BomItem` referenziert Komponenten-`Product`-Einträge.
 
+**ADR-0019 (Produkt-`kind`-Invarianten und Gating abhängiger Objekte):** ADR-0019 ist die
+autoritäre Quelle für alle `kind`-Gating-Regeln abhängiger Entitäten einschließlich
+`BillOfMaterials`. Der zulässige BOM-Geltungsbereich ist dort auf
+`kind ∈ {MANUFACTURED_GOOD, KIT}` erweitert (siehe Nachtrag oben); die Durchsetzung erfolgt
+über `ProductKindPolicy`.
+
+## Nachtrag 2026-06-27 — BOM-Geltungsbereich auf KIT erweitert (siehe ADR-0019)
+
+Die ursprüngliche Formulierung „`BillOfMaterials` gilt ausschließlich für `kind = MANUFACTURED_GOOD`"
+ist durch ADR-0019 (Produkt-`kind`-Invarianten und Gating abhängiger Objekte) abgelöst; ADR-0019
+erweitert den zulässigen BOM-Geltungsbereich auf `kind ∈ {MANUFACTURED_GOOD, KIT}`, weil
+ADR-0014 für `ProductionOrder`-Einträge eine Stückliste auch für KIT-Produkte vorschreibt.
+Der kanonische Regelsatz für `kind`-Gating aller abhängigen Objekte sowie dessen Durchsetzung
+über `ProductKindPolicy` liegen vollständig in ADR-0019. Der ursprüngliche Entscheidungstext
+dieses ADR bleibt unverändert als historischer Beleg erhalten.
+
+---
+
 ## Changelog
+- 2026-06-27: Nachtrag ergänzt: BOM-Geltungsbereich auf `kind ∈ {MANUFACTURED_GOOD, KIT}`
+  erweitert via ADR-0019; ADR-0019 als autoritäre `kind`-Gating-Quelle in Abhängigkeiten
+  eingetragen.
 - 2026-05-03: Erstentscheidung. Herausgelöst aus dem vormaligen omnibus ADR-0003
   (Produkt-Katalog-Domänenmodell).

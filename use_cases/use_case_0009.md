@@ -1,7 +1,7 @@
 # UC-0009: Komponentenentnahme mit Bestandsbestätigung (Ad-hoc-Zykluszählung)
 
 **ID:** UC-0009
-**Bezug:** ADR-0009, ADR-0010, ADR-0011, ADR-0012
+**Bezug:** ADR-0009, ADR-0010, ADR-0011, ADR-0012, ADR-0021
 **Lizenzseite:** Open-Source-Backend (Datenmodell, Bewegungslogik, Zykluszählungs-Korrektur und API); Closed-Source-Frontend (Scan-Maske, Mengeneingabe-UI, Bestätigungsdialog)
 
 **Warum:** Bei der Ad-hoc-Entnahme von Komponenten entstehen Bestandsabweichungen, wenn die tatsächlich entnommene Menge nicht sofort gebucht wird und der Restbestand am Stellplatz nicht verifiziert wird. Ohne eine kombinierte Picking-Buchung und sofortige Zykluszählung bei Abweichung veraltert der `OnHandRecord` schnell, was zu Fehlkommissionierungen bei nachfolgenden Aufträgen führt.
@@ -16,8 +16,8 @@
 ## Vorbedingungen
 
 - Der Lagermitarbeiter ist authentifiziert und hat einen aktiven Workspace.
-- Das zu entnehmende `Product` existiert im aktiven Workspace mit mindestens einem `OnHandRecord` an einem identifizierten `Location`-Knoten.
-- Der Barcode des Produkts (GTIN aus `Product.gtin`) oder der Stellplatz-Barcode (`Location.external_ref`) ist physisch auf dem Produkt bzw. am Stellplatz vorhanden.
+- Die zu entnehmende `ProductVariant` existiert im aktiven Workspace mit mindestens einem `OnHandRecord` an einem identifizierten `Location`-Knoten (ADR-0021: „`OnHandRecord` FK → `ProductVariant` ist autoritativer Schlüssel").
+- Der Barcode der Variante (GTIN aus `ProductVariant.gtin`) oder der Stellplatz-Barcode (`Location.external_ref`) ist physisch auf dem Produkt bzw. am Stellplatz vorhanden (ADR-0021: „`gtin` | `ProductVariant` | GTIN ist die handelsseitige Einheiten-ID").
 
 ## Auslöser
 
@@ -36,19 +36,19 @@ database "Datenbank" as DB
 
 LM -> FE : Produkt-Barcode (GTIN) ODER\nStellplatz-Barcode (Location.external_ref) scannen
 FE -> BE : POST /api/stock/scan/\n{identifier: "<gescannter Wert>", identifier_type: "AUTO"}
-BE -> BE : Identifier-Auflösung:\nGTIN → Product.gtin (ADR-0003);\nexternal_ref → Location.external_ref (ADR-0009);\nglobal_uid → SerialUnit.global_uid (ADR-0012)
-BE -> DB : Passenden OnHandRecord(s)\nfür aufgelösten Identifier + Workspace abfragen
-DB --> BE : Product + Location + qty_on_hand (je OnHandRecord-Zeile)
-BE --> FE : 200 OK — aufgelöster Identifier-Typ,\nProdukt, Stellplatz, aktuelle qty_on_hand
-FE -> LM : Produkt und Stellplatz anzeigen;\nEingabefeld für entnommene Menge einblenden
+BE -> BE : Identifier-Auflösung:\nGTIN → ProductVariant.gtin (ADR-0021);\nexternal_ref → Location.external_ref (ADR-0009);\nglobal_uid → SerialUnit.global_uid (ADR-0012)
+BE -> DB : Passenden OnHandRecord(s)\nfür aufgelöste ProductVariant + Workspace abfragen
+DB --> BE : ProductVariant + Location + qty_on_hand (je OnHandRecord-Zeile)
+BE --> FE : 200 OK — aufgelöster Identifier-Typ,\nProduktvariante, Stellplatz, aktuelle qty_on_hand
+FE -> LM : Produktvariante und Stellplatz anzeigen;\nEingabefeld für entnommene Menge einblenden
 LM -> FE : Entnommene Menge eingeben
-FE -> BE : POST /api/stock/movements/\n{event_type: OBJECT_EVENT,\nbusiness_step: picking,\nproduct: <id>, source_location: <location_id>,\nqty: <entnommen>, uom: <id>,\nidempotency_key: <UUID>}
-BE -> DB : INSERT StockMovement\n{business_step=picking, qty=<entnommen>,\nsource_location=<Stellplatz>,\noccurred_at=jetzt, disposition=null};\nsynchrones UPDATE StockBalance\n(qty_on_hand -= <entnommen>; ADR-0011)
+FE -> BE : POST /api/stock/movements/\n{event_type: OBJECT_EVENT,\nbusiness_step: picking,\nproduct_variant: <id>, source_location: <location_id>,\nqty: <entnommen>, uom: <id>,\nidempotency_key: <UUID>}
+BE -> DB : INSERT StockMovement\n{business_step=picking, qty=<entnommen>,\nproduct_variant=<id>, source_location=<Stellplatz>,\noccurred_at=jetzt, disposition=null};\nsynchrones UPDATE StockBalance\n(qty_on_hand -= <entnommen>; ADR-0011)
 DB --> BE : StockMovement-ID, neue qty_on_hand
 BE --> FE : 201 Created — Picking-Event gespeichert;\nneue qty_on_hand am Stellplatz
 FE -> LM : Bestätigung der Entnahme;\nEingabefeld für Restmenge am Stellplatz anzeigen
 LM -> FE : Tatsächliche Restmenge am Stellplatz eingeben
-FE -> BE : POST /api/stock/cycle-count/\n{location: <id>, product: <id>,\nconfirmed_qty: <Restmenge>,\nidempotency_key: <UUID>}
+FE -> BE : POST /api/stock/cycle-count/\n{location: <id>, product_variant: <id>,\nconfirmed_qty: <Restmenge>,\nidempotency_key: <UUID>}
 BE -> DB : qty_on_hand nach Picking-Event lesen\n(erwartete Restmenge = qty_on_hand_nach_picking)
 DB --> BE : Erwartete Restmenge
 
@@ -56,7 +56,7 @@ alt Restmenge stimmt überein (confirmed_qty == erwartete_Restmenge)
     BE --> FE : 200 OK — keine Korrektur erforderlich;\nAudit-Trail vollständig (1 StockMovement)
     FE -> LM : Bestandsbestätigung: kein Unterschied
 else Restmenge weicht ab (confirmed_qty ≠ erwartete_Restmenge)
-    BE -> DB : INSERT StockMovement\n{business_step=inventorying,\nreason_code=cycle_count_discrepancy,\nqty=<delta: confirmed_qty - erwartete_Restmenge>,\nsource_location=<Stellplatz>,\noccurred_at=jetzt, disposition=null};\nsynchrones UPDATE StockBalance (ADR-0011)
+    BE -> DB : INSERT StockMovement\n{business_step=inventorying,\nreason_code=cycle_count_discrepancy,\nqty=<delta: confirmed_qty - erwartete_Restmenge>,\nproduct_variant=<id>, source_location=<Stellplatz>,\noccurred_at=jetzt, disposition=null};\nsynchrones UPDATE StockBalance (ADR-0011)
     DB --> BE : Korrektur-StockMovement-ID
     BE --> FE : 201 Created — Zykluszählung mit\nKorrekturbuchung gespeichert;\n2 StockMovement-Zeilen im Audit-Trail
     FE -> LM : Bestandsbestätigung: Abweichung\nbegründet und korrigiert anzeigen
@@ -68,8 +68,8 @@ end
 
 ## Alternativablauf A: Scan nicht auflösbar
 
-- Das Backend findet für den gescannten Identifier keinen Treffer im aktiven Workspace (weder über `Product.gtin` noch über `Location.external_ref` noch über `SerialUnit.global_uid`).
-- Das Backend antwortet mit HTTP 404 und benennt, welcher Identifier-Typ erkannt wurde (GTIN-Format erkannt, aber kein passendes Produkt; `external_ref`-Format erkannt, aber kein passender Stellplatz; unbekanntes Format).
+- Das Backend findet für den gescannten Identifier keinen Treffer im aktiven Workspace (weder über `ProductVariant.gtin` noch über `Location.external_ref` noch über `SerialUnit.global_uid`).
+- Das Backend antwortet mit HTTP 404 und benennt, welcher Identifier-Typ erkannt wurde (GTIN-Format erkannt, aber keine passende Produktvariante; `external_ref`-Format erkannt, aber kein passender Stellplatz; unbekanntes Format).
 - Das Frontend zeigt eine Fehlermeldung mit dem erkannten Identifier-Typ, damit der Lagermitarbeiter den Scan überprüfen oder manuell suchen kann.
 
 ## Alternativablauf B: Mengeneingabe überschreitet verfügbaren Bestand
@@ -89,7 +89,7 @@ end
 
 ## Nachbedingungen
 
-- Für die entnommene Menge existiert im `StockMovement`-Log genau ein unveränderlicher Eintrag mit `business_step = picking`, `qty = <entnommen>`, dem aufgelösten Produkt und dem Quell-Stellplatz.
+- Für die entnommene Menge existiert im `StockMovement`-Log genau ein unveränderlicher Eintrag mit `business_step = picking`, `qty = <entnommen>`, der aufgelösten `ProductVariant` und dem Quell-Stellplatz.
 - Hat der Lagermitarbeiter eine abweichende Restmenge bestätigt, existiert ein zweiter unveränderlicher `StockMovement`-Eintrag mit `business_step = inventorying`, `reason_code = cycle_count_discrepancy` und `qty = <delta>`.
 - Hat der Lagermitarbeiter keine Abweichung festgestellt, existiert kein zweiter `StockMovement`-Eintrag für diesen Vorgang.
 - `StockBalance.qty_on_hand` am betroffenen Stellplatz spiegelt den korrigierten Bestand nach beiden Buchungen wider.
@@ -101,7 +101,7 @@ end
 
 ### BAC-1: Scan-Variante GTIN (Produkt-Barcode)
 
-- [ ] Das Backend löst einen Scan, dessen Wert dem Muster einer GS1-GTIN entspricht, gegen `Product.gtin` auf und gibt das passende Produkt mit all seinen `OnHandRecord`-Standorten zurück.
+- [ ] Das Backend löst einen Scan, dessen Wert dem Muster einer GS1-GTIN entspricht, gegen `ProductVariant.gtin` auf (ADR-0021: „`gtin` | `ProductVariant` | GTIN ist die handelsseitige Einheiten-ID") und gibt die passende `ProductVariant` mit all ihren `OnHandRecord`-Standorten zurück.
 - [ ] Die Antwort benennt `identifier_type = "GTIN"`, damit das Frontend den aufgelösten Typ anzeigen kann.
 
 ### BAC-2: Scan-Variante Location.external_ref (Stellplatz-Barcode)
@@ -133,11 +133,11 @@ end
 ### BAC-7: Audit-Trail (Unveränderlichkeit)
 
 - [ ] Alle `StockMovement`-Zeilen dieses Use Cases sind nach dem Schreiben unveränderlich; kein `UPDATE` oder `DELETE` auf bereits gespeicherte Zeilen ist zulässig (ADR-0011: „Zeilen werden nach dem Schreiben nicht mehr geändert oder gelöscht; Korrekturen erfolgen durch kompensierende Gegenbuchungen").
-- [ ] Beide `StockMovement`-Einträge (Picking + ggf. Korrektur) sind über die `StockMovement`-Log-Abfrage für denselben `product`/`location`-Kontext gemeinsam abrufbar.
+- [ ] Beide `StockMovement`-Einträge (Picking + ggf. Korrektur) sind über die `StockMovement`-Log-Abfrage für denselben `product_variant`/`location`-Kontext gemeinsam abrufbar.
 
 ### BAC-8: Workspace-Scope
 
-- [ ] Das Backend löst Scans ausschließlich gegen `Product`, `Location` und `SerialUnit`-Einträge des aktiven Workspace auf (ADR-0001: „Tenant-owned data inherits `WorkspaceScopedModel` and is filtered by `request.active_workspace`").
+- [ ] Das Backend löst Scans ausschließlich gegen `ProductVariant`, `Location` und `SerialUnit`-Einträge des aktiven Workspace auf (ADR-0001: „Tenant-owned data inherits `WorkspaceScopedModel` and is filtered by `request.active_workspace`").
 - [ ] Alle erzeugten `StockMovement`-Einträge gehören dem aktiven Workspace an.
 
 ---
@@ -147,3 +147,8 @@ end
 Der Scan-Auflösungsmechanismus (Identifier Registry) über mehrere Identifier-Typen hinweg (GTIN, `external_ref`, `global_uid`) ist als eigenständige Komponente nicht in einem bestehenden ADR spezifiziert. Die vorliegende Auflösungslogik ist in diesem Use Case als Applikationsverhalten beschrieben; die architektonische Entscheidung, ob eine dedizierte Identifier-Registry-Entität oder eine reine Suchfunktion im Endpunkt angemessen ist, obliegt `kxcrm-architect`. Diese Lücke ist in `open_questions.md` als OQ-0016 erfasst.
 
 Der `business_step`-Wert `inventorying` ist im Wertebereich von ADR-0011 nicht aufgeführt. Die geplante Erweiterung des Wertebereichs ist in diesem Use Case als Voraussetzung beschrieben; die formale Aufnahme erfolgt durch `kxcrm-architect` als ADR-0011-Amendment. Diese Lücke ist in `open_questions.md` als OQ-0017 erfasst.
+
+---
+
+## Änderungsprotokoll
+- 2026-07-04: Anpassung an ADR-0021: Preis-/Bestands-/GTIN-Schlüsselung auf ProductVariant.

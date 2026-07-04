@@ -224,3 +224,34 @@ Closed-Source-Abhängigkeit entsteht.
 - 2026-05-04: `LAYER`-Enum-Wert zwischen `SHELF` und `BIN` ergänzt, um die 4-stufige physische
   Lagerhierarchie (Regal → Fach → Ebene → Position) maschinenlesbar zu verankern. UC-0008,
   UC-0009 als auslösende Use Cases. Siehe Amendment 2026-05-04.
+- 2026-06-28: Amendment — `OnHandRecord` FK auf `ProductVariant` als autoritativer Schlüssel;
+  `tracking_mode` auf `ProductVariant` per ADR-0021 (siehe unten).
+
+---
+
+## Amendment 2026-06-28 — `OnHandRecord` → `ProductVariant` als autoritativer Lager-Schlüssel (ADR-0021)
+
+ADR-0021 fixiert `ProductVariant` als die verkaufbare SKU und als autoritativen
+Granularitätsanker für Lager und Tracking. Das vorliegende ADR beschreibt `OnHandRecord` mit
+einem FK auf `Product` (obligatorisch) und einem FK auf `ProductVariant` (nullable). Dieser
+duale FK-Zustand ist ein Smell: Er lässt offen, ob der Lagerbestand auf Produkt- oder
+Variantenebene geführt wird.
+
+### Korrekte Aussage
+
+`OnHandRecord` trägt einen FK auf `ProductVariant` als primären, obligatorischen Lager-Schlüssel.
+Der bisherige obligatorische FK auf `Product` entfällt als direktes Feld auf `OnHandRecord`;
+das Produkt ist über den FK-Pfad `OnHandRecord → ProductVariant → Product` erreichbar. Der
+zusammengesetzte Unique-Constraint lautet:
+`(workspace, variant, location, batch, serial_unit, owner_type, owner_party)`.
+
+### `tracking_mode` auf `ProductVariant`
+
+Das additive Feld `tracking_mode` (`NONE`, `BATCH`, `SERIAL`) wechselt von `Product` auf
+`ProductVariant`. Verschiedene Varianten desselben Produkts können unterschiedliche
+Tracking-Modi tragen (z. B. eine Variante ohne Seriennummernverfolgung, eine andere mit
+`SERIAL`). Der Defaultwert bleibt `NONE`; die Applikationsschicht erzwingt die Konsistenz mit
+angelegten `Batch`- und `SerialUnit`-Einträgen unverändert.
+
+ADR-0021 ist die autoritative Quelle für die Schlüsselung; das vorliegende Amendment
+dokumentiert die Auswirkung auf ADR-0009.

@@ -1,7 +1,7 @@
 # UC-0008: Komponenten-Bestandssuche mit Stellplatz-Anzeige
 
 **ID:** UC-0008
-**Bezug:** ADR-0003, ADR-0009, ADR-0010, ADR-0011
+**Bezug:** ADR-0003, ADR-0009, ADR-0010, ADR-0011, ADR-0021
 **Lizenzseite:** Open-Source-Backend (Datenmodell, Suchendpunkt, Aggregationslogik und API); Closed-Source-Frontend (Suchmaske, Breadcrumb-Darstellung, Filter-UI)
 
 **Warum:** Lagermitarbeiter verlieren Zeit bei der manuellen Suche nach Komponenten, wenn Bestandsdaten und Standortpfade nicht in einer einzigen Abfrage abrufbar sind. Ohne einen strukturierten Suchendpunkt, der `OnHandRecord`-Aggregate und den vollständigen Standortpfad zusammenführt, entstehen Kommissionierfehler durch veraltete oder falsch lokalisierte Bestandsinformationen.
@@ -16,7 +16,7 @@
 ## Vorbedingungen
 
 - Der Lagermitarbeiter ist authentifiziert und hat einen aktiven Workspace.
-- Mindestens ein `Product` mit zugehörigen `OnHandRecord`-Zeilen und `Location`-Zuordnungen existiert im aktiven Workspace.
+- Mindestens ein `Product` mit mindestens einer `ProductVariant` existiert im aktiven Workspace; die Variante trägt zugehörige `OnHandRecord`-Zeilen und `Location`-Zuordnungen (ADR-0021: „`OnHandRecord` FK → `ProductVariant` ist autoritativer Schlüssel").
 - Die `Location`-Hierarchie des Workspace enthält die vier Ebenen Regal (`RACK`), Fach (`SHELF`), Ebene (`AISLE` oder angepasster Typ je Konfiguration) und Position (`BIN`) gemäß ADR-0009: „n-stufige Standorthierarchie mit `location_type`-Enum".
 
 ## Auslöser
@@ -36,12 +36,12 @@ database "Datenbank" as DB
 
 LM -> FE : Suchbegriff (Name oder kind) eingeben;\noptional: Workspace-Filter,\nVerfügbarkeitsfilter, Chargenfilter setzen
 FE -> BE : GET /api/stock/components/search/\n?q=<Begriff>&kind=<Wert>&include_zero_qty=<bool>\n&batch=<id>
-BE -> DB : Product-Suche nach name/translation und kind;\nJoin auf OnHandRecord + Batch (wenn Filter)\n(Workspace-Scope via WorkspaceScopedViewSetMixin,\nADR-0001)
-DB --> BE : Produkt-Treffer mit qty_on_hand-Summe\nund Location-FK je OnHandRecord-Zeile
+BE -> DB : Product-Suche nach name/translation und kind;\nJoin auf ProductVariant + OnHandRecord + Batch\n(wenn Filter) (Workspace-Scope via\nWorkspaceScopedViewSetMixin, ADR-0001)
+DB --> BE : ProductVariant-Treffer je Product mit\nqty_on_hand-Summe und Location-FK je OnHandRecord-Zeile\n(ADR-0021: OnHandRecord FK → ProductVariant)
 BE -> DB : Für jeden Treffer: vollständigen Standortpfad\nnach oben traversieren (rekursiver CTE\nbis zum Root-Knoten; ADR-0009)
 DB --> BE : Pfadliste je OnHandRecord:\nRegel → Fach → Ebene → Position (Breadcrumb-Sequenz)
-BE --> FE : 200 OK — Trefferliste:\nProdukt-ID, Name, kind,\nje Standort: qty_on_hand + Breadcrumb-Array\n[{type: RACK, name: "R03"},\n{type: SHELF, name: "S02"},\n…, {type: BIN, name: "B04"}]\nStandorte sortiert nach qty_on_hand absteigend
-FE -> LM : Trefferliste mit Breadcrumbs anzeigen
+BE --> FE : 200 OK — Trefferliste:\nProdukt-ID, Name, kind,\nje Treffer: ProductVariant-ID + sku,\nje Standort: qty_on_hand + Breadcrumb-Array\n[{type: RACK, name: "R03"},\n{type: SHELF, name: "S02"},\n…, {type: BIN, name: "B04"}]\nStandorte sortiert nach qty_on_hand absteigend
+FE -> LM : Trefferliste mit Variantenkennung und Breadcrumbs anzeigen
 @enduml
 ```
 
@@ -53,12 +53,13 @@ FE -> LM : Trefferliste mit Breadcrumbs anzeigen
 - Das Backend antwortet mit HTTP 200 und einer leeren Ergebnisliste (`results: []`).
 - Das Frontend zeigt eine Meldung, dass kein passender Bestand gefunden wurde.
 
-## Alternativablauf B: Mehrere Standorte für dasselbe Produkt
+## Alternativablauf B: Mehrere Standorte für dieselbe ProductVariant
 
-- Das Backend findet mehrere `OnHandRecord`-Zeilen für dasselbe Produkt an verschiedenen `Location`-Knoten.
-- Das Backend gibt alle Standorte als separate Einträge in der Trefferliste zurück, jeweils mit eigenem Breadcrumb und eigener `qty_on_hand`-Menge.
+- Das Backend findet mehrere `OnHandRecord`-Zeilen für dieselbe `ProductVariant` an verschiedenen `Location`-Knoten (ADR-0021: `OnHandRecord` FK → `ProductVariant`).
+- Das Backend gibt alle Standorte als separate Einträge in der Trefferliste zurück, jeweils mit eigenem Breadcrumb, eigener `qty_on_hand`-Menge und der `ProductVariant`-Kennung (`sku`).
 - Die Einträge sind nach `qty_on_hand` absteigend sortiert, sodass der Standort mit dem höchsten verfügbaren Bestand zuerst erscheint.
-- Das Frontend zeigt alle Standorte des Produkts untereinander.
+- Das Frontend zeigt alle Standorte der Variante untereinander.
+- Trägt ein `Product` mehrere `ProductVariant`-Einträge, gruppiert das Frontend die Standorteinträge zusätzlich nach Variante.
 
 ## Alternativablauf C: Treffer mit qty_on_hand = 0
 
@@ -75,7 +76,7 @@ FE -> LM : Trefferliste mit Breadcrumbs anzeigen
 
 ## Nachbedingungen
 
-- Der Lagermitarbeiter erhält eine vollständige Liste aller passenden Produkte mit `qty_on_hand`-Aggregat und vollständigem 4-stufigen Standortpfad als Breadcrumb-Array.
+- Der Lagermitarbeiter erhält eine vollständige Liste aller passenden `ProductVariant`-Treffer (mit Produkt- und Variantenkennung) mit `qty_on_hand`-Aggregat und vollständigem 4-stufigen Standortpfad als Breadcrumb-Array.
 - Kein `OnHandRecord`-Eintrag aus einem anderen Workspace erscheint in der Antwort.
 - Einträge mit `qty_on_hand = 0` sind nur sichtbar, wenn der Filter „inkl. Nullbestand" explizit gesetzt ist.
 
@@ -101,8 +102,9 @@ FE -> LM : Trefferliste mit Breadcrumbs anzeigen
 
 ### BAC-4: Mehrere Standorte gleichzeitig
 
-- [ ] Existieren für ein Produkt `n > 1` `OnHandRecord`-Zeilen an verschiedenen `Location`-Knoten, enthält die Antwort `n` Standorteinträge für dieses Produkt, jeder mit eigenem Breadcrumb und eigener Menge.
-- [ ] Die Standorteinträge für dasselbe Produkt sind nach `qty_on_hand` absteigend sortiert.
+- [ ] Existieren für eine `ProductVariant` `n > 1` `OnHandRecord`-Zeilen an verschiedenen `Location`-Knoten (ADR-0021: `OnHandRecord` FK → `ProductVariant` ist autoritativer Schlüssel), enthält die Antwort `n` Standorteinträge für diese Variante, jeder mit eigenem Breadcrumb, eigener Menge und der `ProductVariant`-Kennung (`sku`).
+- [ ] Die Standorteinträge für dieselbe `ProductVariant` sind nach `qty_on_hand` absteigend sortiert.
+- [ ] Trägt ein `Product` mehrere `ProductVariant`-Einträge, weist jeder Standorteintrag eindeutig aus, zu welcher Variante er gehört.
 
 ### BAC-5: Leeres Ergebnis
 
@@ -116,7 +118,7 @@ FE -> LM : Trefferliste mit Breadcrumbs anzeigen
 
 ### BAC-7: Workspace-Scope-Trennung
 
-- [ ] Die Suchanfrage liefert ausschließlich `OnHandRecord`- und `Product`-Einträge des aktiven Workspace (ADR-0001: „Tenant-owned data inherits `WorkspaceScopedModel` and is filtered by `request.active_workspace`").
+- [ ] Die Suchanfrage liefert ausschließlich `OnHandRecord`-, `ProductVariant`- und `Product`-Einträge des aktiven Workspace (ADR-0001: „Tenant-owned data inherits `WorkspaceScopedModel` and is filtered by `request.active_workspace`").
 - [ ] Ein Lagermitarbeiter ohne Leserecht auf einen anderen Workspace erhält keinen Treffer aus diesem Workspace, auch wenn die gesuchte Komponente dort vorhanden ist.
 
 ---
@@ -124,3 +126,8 @@ FE -> LM : Trefferliste mit Breadcrumbs anzeigen
 ## Architectural gaps surfaced
 
 Es bestehen keine architektonischen Lücken über die bereits in ADR-0009 angekündigte Erweiterung des `location_type`-Enums (`LAYER`-Amendment) hinaus. Dieses ADR legt fest, dass die `Location`-Hierarchie durch einen einzelnen rekursiven Selbstverweis n-stufig abgebildet wird; die genaue Enum-Benennung der Zwischenebenen hat keinen Einfluss auf die Suchlogik dieses Use Cases, da der Breadcrumb-Pfad strukturell traversiert wird.
+
+---
+
+## Änderungsprotokoll
+- 2026-07-04: Anpassung an ADR-0021: Preis-/Bestands-/GTIN-Schlüsselung auf ProductVariant.

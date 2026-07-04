@@ -50,7 +50,15 @@ oder ein Big-Bang-Schnitt im Rahmen des v2.0.0-Majorrelease?
 **Zuständig:** `kxcrm-requirements-engineer` formuliert Migrationsanforderung;
 @scaphilo / @Hacont entscheiden Vorgehen.
 
-**Status:** Offen (2026-05-03)
+**Status:** Geschlossen (2026-06-27) — OQ-0002 framte die Umbenennung als FK-Bruch; tatsächlich
+handelt es sich um eine RENAME + APP-RELOCATION ohne per-Zeile-FK-Rewrite. Die gewählte Strategie
+ist ein v2.0.0-Schnitt via Django `SeparateDatabaseAndState`: eine einzige Migration benennt
+`crm.ProductType` → `products.Product` um; die DB-Operation ist
+`ALTER TABLE crm_producttype RENAME TO products_product`; FK-Constraints aus `contracts` und
+`accounting` folgen automatisch; das leere `Product`-Hüllenmodell entfällt im selben Schritt;
+die Migration ist reversibel; ein Dry-Run-Management-Command prüft Zeilenzahlen und FK-Integrität
+vorab. Ein langlebiger phasenweiser Dual-Stack entfällt. Die Änderung wird als BREAKING
+v2.0.0-Schnitt ausgeliefert. Siehe ADR-0003 Amendment 2026-06-27.
 
 ---
 
@@ -181,6 +189,14 @@ Siehe ADR-0014.
   gesetzt werden?
 - **Blocks:** REQ-0007 AC-4 (kind-Standardwert in der Migration)
 
+**Status:** Geschlossen (2026-06-27) — `TRADING_GOOD` ist der Standardwert für `kind` bei allen
+migrierten `ProductType`-Zeilen. Das Feld ist Pflichtfeld (ADR-0019 / REQ-0001 AC-1); `null` ist
+keine Option. `TRADING_GOOD` ist der am wenigsten einschränkende Wert: er erfordert kein
+`ServiceProfile`, keine `BillOfMaterials`-Stückliste und impliziert keinen BOM; Lagerbestand ist
+erlaubt. Das ADR-0019-Sperr-Set für frisch migrierte Zeilen ist leer; `kind` bleibt nach der
+Migration frei korrigierbar — Betreiber reklassifizieren Einträge ohne Sperrwirkung. Der Wert wird
+in der Migrations-Dokumentation festgehalten (REQ-0007 AC-4). Siehe ADR-0003 Amendment 2026-06-27.
+
 ---
 
 ## OQ-0009 — Unveränderlichkeit des kind-Felds nach Anlage abhängiger Objekte
@@ -194,6 +210,18 @@ Siehe ADR-0014.
   ist)? Die vollständige Liste der Zustände, die einen `kind`-Wechsel sperren, ist in der
   Applikationsschicht zu definieren.
 - **Blocks:** REQ-0001 AC-4 (Unveränderlichkeit), REQ-0015 AC-1 (kind-Invariante BOM), REQ-0016 AC-2 (kind-Invariante ServiceProfile)
+
+**Status:** Geschlossen (2026-06-27) — Das vollständige Sperr-Set ist in ADR-0019
+(Produkt-`kind`-Invarianten und Gating abhängiger Objekte) definiert. `kind` ist frei änderbar,
+solange keines der folgenden Elemente existiert: `ServiceProfile`, `BillOfMaterials`,
+`ProductionOrder`, eine Lagertatsache (`StockMovement`, `SerialUnit`, `Batch`, `OnHandRecord`),
+ein gesetzter `kit_mode`-Wert oder ein Attributwert in einem kind-gebundenen `AttributeSet`.
+Das bloße Vorhandensein von `ProductVariant`-Einträgen sperrt `kind` nicht — `ProductVariant`
+ist kind-agnostisch. Ein Attributwert in einem kind-gebundenen `AttributeSet` (ADR-0004, `kind`
+als Achse) gehört zum Sperr-Set. Durchsetzung erfolgt durch die `ProductKindPolicy`-Komponente
+in der Applikationsschicht; kein Datenbankconstraint. REQ-0015 AC-1 erfordert eine
+Folgekorrektur durch den `kxcrm-requirements-engineer` (BOM-Gating auf
+`kind ∈ {MANUFACTURED_GOOD, KIT}` ausweiten). Siehe ADR-0019.
 
 ---
 

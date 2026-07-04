@@ -204,3 +204,59 @@ jahrzehntlange Rückverfolgbarkeit.
   per Soft-Delete gehalten; keine Archivtabelle; partieller Index auf `decommissioned_at IS NULL`
   für Hot-Path-Performance. Workspace-weite konfigurierbare Aufbewahrungsuntergrenze
   (`retention_floor`) als additive Schutzsperre eingeführt.
+- 2026-07-04: Amendment — `Batch` und `SerialUnit` FK wechselt von `Product` auf
+  `ProductVariant` als autoritativer Schlüssel (ADR-0021). Siehe Amendment 2026-07-04.
+
+---
+
+## Amendment 2026-07-04 — `Batch` und `SerialUnit` → `ProductVariant` als autoritativer Schlüssel (ADR-0021)
+
+ADR-0021 fixiert `ProductVariant` als die verkaufbare SKU und als autoritativen
+Granularitätsanker für Bestand und Tracking; das Amendment 2026-06-28 zu ADR-0009 verschiebt
+`OnHandRecord` und `tracking_mode` bereits von `Product` auf `ProductVariant`. Das vorliegende
+ADR beschreibt `Batch` mit einem alleinigen FK auf `Product` und `SerialUnit` mit einem
+obligatorischen FK auf `Product` neben einem nullable FK auf `ProductVariant` — derselbe duale
+FK-Smell, den ADR-0021 für `OnHandRecord` bereits aufgelöst hat. Eine Seriennummer identifiziert
+eine physische Einheit eines konkreten verkaufbaren SKU, nicht eines abstrakten Katalogobjekts;
+eine Charge ist physisch ein Produktionslos einer konkreten SKU. Da `OnHandRecord` (der Ort, an
+dem Menge, Charge und Seriennummer zusammenlaufen) bereits auf `ProductVariant` schlüsselt, muss
+dieselbe Schlüsselung auf `Batch` und `SerialUnit` durchgezogen werden, sonst zerfällt die
+Schlüsselungskette an genau der Stelle, an der Bestand chargen- oder seriengebunden wird.
+
+### Korrekte Aussage — `Batch`
+
+`Batch` trägt einen obligatorischen FK auf `ProductVariant` anstelle des bisherigen FK auf
+`Product`. Das Produkt ist über den FK-Pfad `Batch → ProductVariant → Product` erreichbar.
+`batch_number` ist workspace- und variantenindeutig (statt workspace- und produkteindeutig).
+Der FEFO-Index wechselt von `(workspace, product, expiry_date)` auf
+`(workspace, variant, expiry_date)`.
+
+### Korrekte Aussage — `SerialUnit`
+
+`SerialUnit` trägt einen obligatorischen FK auf `ProductVariant` als primären Schlüssel; der
+bisherige obligatorische FK auf `Product` entfällt als direktes Feld. Das Produkt ist über den
+FK-Pfad `SerialUnit → ProductVariant → Product` erreichbar. `serial_number` ist workspace- und
+variantenindeutig (statt workspace- und produkteindeutig).
+
+### Konsistenz mit `tracking_mode`
+
+`tracking_mode` (ADR-0009-Amendment 2026-06-28) lebt bereits auf `ProductVariant`. Die
+Anlageregel — die Applikationsschicht erzwingt, dass `OnHandRecord`-Zeilen für eine Variante mit
+`tracking_mode = BATCH` einen `Batch`-FK und für `tracking_mode = SERIAL` einen `SerialUnit`-FK
+tragen (Consequences, oben) — bleibt inhaltlich unverändert; alle drei beteiligten FKs
+(`OnHandRecord`, `Batch`, `SerialUnit`) zeigen nun einheitlich auf `ProductVariant`.
+
+### FEFO-Pickreihenfolge und Traceability
+
+Kriterium 1–3 der FEFO-Pickreihenfolge bleiben unverändert; sie operieren auf `Batch`-Feldern,
+nicht auf dem FK-Ziel. Die Traceability-Traversierung (Vorwärts-/Rückwärtspfad) bleibt
+unverändert, da sie über `StockMovement`-FKs auf `Batch`/`SerialUnit` läuft, nicht direkt über
+`Product`.
+
+### Migrationsbedeutung
+
+Die v2.0.0-Migration (REQ-0007) legt die Standardvariante an, auf die bestehende `Batch`- und
+`SerialUnit`-Zeilen bei der Umstellung von `Product` auf `ProductVariant` verweisen.
+
+ADR-0021 ist die autoritative Quelle für die Schlüsselung; das vorliegende Amendment
+dokumentiert die Auswirkung auf ADR-0012.

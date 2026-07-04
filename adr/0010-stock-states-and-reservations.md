@@ -328,3 +328,65 @@ und löscht keine bestehenden `RentalAssignment`-Zeilen.
 - 2026-05-04: OQ-0011 geschlossen: zeitfensterbasierte Verfügbarkeitsfunktion `is_free(serial_unit, start, end)` und `free_windows(product, start, end)` als berechnete Abfrage über `StockReservation` definiert; dedizierter API-Endpunkt festgelegt. Siehe Amendment 2026-05-04.
 - 2026-05-04: OQ-0012 geschlossen: Zustandsmaschine Angebot → `StockReservation` mit `reservation_status`-Feld (`PROVISIONAL`/`CONFIRMED`) und first-SENT-wins-Konkurrenzregel festgelegt. Siehe Amendment 2026-05-04.
 - 2026-05-04: OQ-0013 geschlossen: `StockReservation` ist alleinige Belegungsquelle für den Verfügbarkeitskalender; `kind`-Feld (`SALE`, `RENTAL`, `PROJECT_HOLD`), `serial_unit`-FK und Zeitfensterfelder auf `StockReservation` eingeführt; `RentalAssignment` bleibt als Spezialisierung erhalten; Doppelzählungsregel festgelegt; Migrationsvorgehen beschrieben. Siehe Amendment 2026-05-04.
+- 2026-07-04: Amendment — `StockBalance` und `StockReservation` FK wechselt von `Product` auf
+  `ProductVariant` als autoritativer Schlüssel (ADR-0021); `free_windows()`-Signatur und
+  Verfügbarkeits-Endpunkt entsprechend angepasst. Siehe Amendment 2026-07-04.
+
+---
+
+## Amendment 2026-07-04 — `StockBalance` und `StockReservation` → `ProductVariant` als autoritativer Schlüssel (ADR-0021)
+
+ADR-0021 fixiert `ProductVariant` als autoritativen Granularitätsanker für Bestand; das
+Amendment 2026-06-28 zu ADR-0009 verschiebt `OnHandRecord` bereits von `Product` auf
+`ProductVariant`. `StockBalance` ist der denormalisierte Aggregatssatz über `OnHandRecord`
+(„`StockBalance` ist ein denormalisierter Aggregatssatz, der durch `StockMovement`-Events
+aktuell gehalten wird", oben) und `StockReservation` bindet Bestandsmengen oder Einzeleinheiten
+an Belege; beide tragen bislang denselben dualen FK-Zustand (obligatorischer FK auf `Product`
+neben nullable FK auf `ProductVariant`) wie das vor Amendment 2026-06-28 beschriebene
+`OnHandRecord`. Da `StockBalance` aus `OnHandRecord`-Zeilen aggregiert und `StockReservation`
+dieselbe Bestandseinheit reserviert, muss die Schlüsselung beider Entitäten der bereits
+vollzogenen `OnHandRecord`-Umstellung folgen, sonst aggregiert `StockBalance` über eine andere
+Granularität als die Zeilen, aus denen es gebildet wird.
+
+### Korrekte Aussage — `StockBalance`
+
+`StockBalance` trägt einen obligatorischen FK auf `ProductVariant` anstelle des bisherigen FK
+auf `Product`. Das Produkt ist über den FK-Pfad `StockBalance → ProductVariant → Product`
+erreichbar. Der zusammengesetzte Unique-Constraint lautet neu:
+`(workspace, variant, location)`. Der Index für ATP-Abfragen wechselt von
+`(workspace, product, variant, location)` auf `(workspace, variant, location)`.
+
+Produktweite Bestandsübersichten (Summe über alle Varianten eines Produkts) erfordern eine
+GROUP-BY-Aggregation über den FK-Pfad `StockBalance → ProductVariant → Product`; sie sind nicht
+mehr über ein direktes FK-Feld auf `StockBalance` abfragbar. Dies entspricht der bereits in
+ADR-0009 (Amendment 2026-06-28) für `OnHandRecord` festgelegten Konsequenz.
+
+### Korrekte Aussage — `StockReservation`
+
+`StockReservation` trägt einen obligatorischen FK auf `ProductVariant` anstelle des bisherigen
+FK auf `Product`. Das Produkt ist über den FK-Pfad `StockReservation → ProductVariant → Product`
+erreichbar. `location`, `batch` und `serial_unit` bleiben unverändert nullable FKs; `batch`
+verweist nun auf ein variantengekeytes `Batch` (ADR-0012, Amendment 2026-07-04), `serial_unit`
+auf eine variantengekeytes `SerialUnit` (ADR-0012, Amendment 2026-07-04).
+
+### ATP, `is_free()` und `free_windows()`
+
+Die ATP-Formel (`ATP = qty_on_hand − qty_booked − qty_reserved_for_document + qty_ordered`)
+bleibt unverändert; sie wird pro `(workspace, variant, location)` statt pro
+`(workspace, product, variant, location)` ausgewertet. `is_free(serial_unit, start, end)`
+(Amendment 2026-05-04, OQ-0011) bleibt unverändert, da sie bereits auf `SerialUnit` operiert.
+`free_windows(product, start, end)` wird zu `free_windows(variant, start, end)`: Da `SerialUnit`
+(ADR-0012, Amendment 2026-07-04) auf `ProductVariant` schlüsselt, muss die Verfügbarkeitsabfrage
+über die Seriennummern einer Variante iterieren, nicht über die eines abstrakten Produkts, das
+mehrere Varianten mit unterschiedlichem `tracking_mode` tragen kann. Der API-Endpunkt wechselt
+entsprechend von `GET /api/products/{id}/serial-units/availability/?start=&end=` auf
+`GET /api/variants/{id}/serial-units/availability/?start=&end=`.
+
+### Migrationsbedeutung
+
+Die v2.0.0-Migration (REQ-0007) legt die Standardvariante an, auf die bestehende
+`StockBalance`- und `StockReservation`-Zeilen bei der Umstellung von `Product` auf
+`ProductVariant` verweisen.
+
+ADR-0021 ist die autoritative Quelle für die Schlüsselung; das vorliegende Amendment
+dokumentiert die Auswirkung auf ADR-0010.

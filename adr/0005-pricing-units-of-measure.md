@@ -124,3 +124,29 @@ einen FK auf `Product`.
 - 2026-05-03: Erstentscheidung. Herausgelöst aus dem vormaligen omnibus ADR-0003
   (Produkt-Katalog-Domänenmodell).
 - 2026-05-03: Drei-Ebenen-Preisvorrang ratifiziert (zuvor dokumentierte Annahme in REQ-0012).
+- 2026-06-28: Amendment — `ProductPrice` FK auf `ProductVariant` (statt `Product`) per
+  ADR-0021 (siehe unten).
+
+---
+
+## Amendment 2026-06-28 — `ProductPrice` FK → `ProductVariant` (ADR-0021)
+
+ADR-0021 fixiert, dass `ProductVariant` die verkaufbare SKU ist und den Preis trägt. Das
+vorliegende ADR beschreibt `ProductPrice` mit „FK auf `Product`"; diese Aussage ist per
+ADR-0021 superseded.
+
+**Korrekte Aussage:** `ProductPrice` trägt einen FK auf `ProductVariant` (nicht auf `Product`).
+Der Preis ist variantenspezifisch; verschiedene Varianten desselben Produkts (z. B.
+„Weissbrot 250 g" vs. „Weissbrot 500 g") tragen je eigene `ProductPrice`-Einträge. ADR-0021
+ist die autoritative Quelle für die Schlüsselung; das vorliegende Amendment dokumentiert die
+Auswirkung auf ADR-0005.
+
+Die Drei-Ebenen-Preisvorrang-Regel (explizite `PriceList` → workspace-weiter Standard →
+`customer_group_transform`-Faktor) bleibt unverändert; der Ankerpunkt der Auflösung ist
+`ProductVariant` statt `Product`.
+
+`UnitOfMeasureConversion` verbleibt mit FK auf `Product`, da Einheitenkonversionen in der
+Regel produktweit gelten (z. B. Stück ↔ Karton à 12 ist am Produkt definiert, nicht je
+Variante). Erfordert eine Variante eine abweichende Konversionsrate, trägt sie einen eigenen
+`UnitOfMeasureConversion`-Eintrag mit FK auf `ProductVariant`; diese Erweiterung erfordert
+kein weiteres ADR, da sie das bestehende Muster direkt anwendet.

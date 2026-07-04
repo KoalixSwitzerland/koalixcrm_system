@@ -1,7 +1,7 @@
 # UC-0007: Mietangebot für eine Einzeleinheit erstellen und Verfügbarkeit prüfen
 
 **ID:** UC-0007
-**Bezug:** ADR-0009, ADR-0010, ADR-0011, ADR-0012, ADR-0013, ADR-0015
+**Bezug:** ADR-0009, ADR-0010, ADR-0011, ADR-0012, ADR-0013, ADR-0015, ADR-0021
 **Lizenzseite:** Open-Source-Backend (Datenmodell, Reservierungslogik, Ereignis-Log und API); Closed-Source-Frontend (Verfügbarkeitskalender-UI, Angebotserstellungs-UI)
 
 **Warum:** Mietflottenbetreiber verleihen Geräte zeitgebunden an Kunden; jede `SerialUnit` ist in einem Zeitfenster genau einem Mieter zugeordnet. Ohne eine zeitfensterbasierte Verfügbarkeitsprüfung und eine sofortige Soft-Reservierung beim Speichern des Angebots entstehen Doppelbuchungen, bei denen zwei Angebote dieselbe Einheit für denselben Zeitraum versprechen.
@@ -15,8 +15,8 @@
 
 ## Vorbedingungen
 
-- Das `Product` (`kind = TRADING_GOOD` oder ein anderer angemessener `kind`-Wert für Mietgüter; `tracking_mode = SERIAL`) existiert im aktiven Workspace mit `lifecycle_status = ACTIVE`.
-- Mindestens eine `SerialUnit` dieses Produkts ist im Workspace vorhanden, trägt `condition_state ∈ {NEW, USED}` (nicht `DAMAGED`, nicht `IN_REPAIR`) und hat kein aktives `RentalAssignment` für den angefragten Zeitraum.
+- Das `Product` (`kind = TRADING_GOOD` oder ein anderer angemessener `kind`-Wert für Mietgüter) existiert im aktiven Workspace mit `lifecycle_status = ACTIVE` und trägt mindestens eine `ProductVariant` mit `tracking_mode = SERIAL` (ADR-0021: „Das additive Feld `tracking_mode` ... wechselt von `Product` auf `ProductVariant`", ADR-0009 Amendment 2026-06-28).
+- Mindestens eine `SerialUnit` dieser `ProductVariant` ist im Workspace vorhanden, trägt `condition_state ∈ {NEW, USED}` (nicht `DAMAGED`, nicht `IN_REPAIR`) und hat kein aktives `RentalAssignment` für den angefragten Zeitraum (`SerialUnit` trägt einen obligatorischen FK auf `ProductVariant`, ADR-0012 Amendment 2026-07-04).
 - Der Benutzer ist authentifiziert und hat einen aktiven Workspace.
 - Eine Kundenpartei (`Party`, ADR-0001) für den Mieter existiert im Workspace.
 
@@ -35,20 +35,20 @@ participant "Frontend\n(Next.js)" as FE
 participant "Backend\n(DRF)" as BE
 database "Datenbank" as DB
 
-PL -> FE : Neues Angebot öffnen, Mietprodukt auswählen
-FE -> BE : GET /api/products/{id}/serial-units/availability/\n?start=<ISO8601>&end=<ISO8601>
-BE -> DB : Alle SerialUnits für Produkt abrufen;\nRentalAssignment + StockReservation\nfür Zeitraum [start, end] auswerten
+PL -> FE : Neues Angebot öffnen, Mietprodukt (Variante) auswählen
+FE -> BE : GET /api/variants/{id}/serial-units/availability/\n?start=<ISO8601>&end=<ISO8601>
+BE -> DB : Alle SerialUnits für Variante abrufen;\nRentalAssignment + StockReservation\nfür Zeitraum [start, end] auswerten
 DB --> BE : Verfügbarkeitsliste pro SerialUnit\n(frei / belegt + Rückgabedatum)
 BE --> FE : 200 OK — Verfügbarkeitskalender (SerialUnit-Ebene)
 
 FE -> PL : Verfügbarkeitskalender anzeigen:\nfrei / belegt je SerialUnit + Rückgabedatum\ndes Vormieters (wenn belegt)
 PL -> FE : Mietstart, Mietende, Wunsch-SerialUnit\n(oder „automatisch") eingeben
 
-FE -> BE : POST /api/quotations/{id}/positions/\n{product, serial_unit?, rental_start, rental_end,\nqty=1, uom, price}
+FE -> BE : POST /api/quotations/{id}/positions/\n{variant, serial_unit?, rental_start, rental_end,\nqty=1, uom, price}
 BE -> BE : Überschneidungsprüfung:\n∃ aktive StockReservation oder RentalAssignment\nfür dieselbe SerialUnit ∩ [rental_start, rental_end]?
 
 alt Keine Überschneidung, SerialUnit angegeben
-    BE -> DB : INSERT StockReservation\n{product, serial_unit, rental_start, rental_end,\nreservation_type=RESERVED_FOR_DOCUMENT,\ndocument=Angebot, status=ACTIVE}
+    BE -> DB : INSERT StockReservation\n{variant, serial_unit, rental_start, rental_end,\nreservation_type=RESERVED_FOR_DOCUMENT,\ndocument=Angebot, status=ACTIVE}
     DB --> BE : Reservierungs-ID
     BE -> DB : INSERT StockMovement\n{event_type=OBJECT_EVENT,\nbusiness_step=rental_out (geplant / soft),\nserial_unit, qty=null (Lifecycle-Event),\ndocument=Angebot, occurred_at=rental_start}
     DB --> BE : OK
@@ -74,7 +74,7 @@ FE -> PL : Angebot als „Versendet" bestätigen
 
 ## Alternativablauf A: Keine SerialUnit im angefragten Zeitfenster verfügbar
 
-- Das Backend stellt fest, dass alle `SerialUnit`-Einträge des Produkts im Zeitraum `[rental_start, rental_end]` durch aktive `StockReservation`- oder `RentalAssignment`-Einträge belegt sind oder `condition_state ∈ {DAMAGED, IN_REPAIR}` tragen.
+- Das Backend stellt fest, dass alle `SerialUnit`-Einträge der Variante im Zeitraum `[rental_start, rental_end]` durch aktive `StockReservation`- oder `RentalAssignment`-Einträge belegt sind oder `condition_state ∈ {DAMAGED, IN_REPAIR}` tragen.
 - Das Backend antwortet mit HTTP 409 und gibt das früheste Datum zurück, an dem mindestens eine Einheit wieder verfügbar ist (berechnet aus `RentalAssignment.return_due_date` und `StockReservation.expires_at`).
 - Das Frontend zeigt die Nichtverfügbarkeit im Kalender und schlägt das nächste freie Fenster vor.
 - Der Projektleiter passt das Mietfenster an oder bricht den Vorgang ab.
@@ -181,3 +181,9 @@ ADR-0013 definiert `RentalAssignment` als Bindung einer `SerialUnit` an einen ak
 ### Lücke 5 — Halter-Zeitleiste als dedizierter Abfragepfad nicht definiert (OQ-0014)
 
 ADR-0015 definiert den Abfragepfad „Vollständige Einheitenhistorie" als alle `StockMovement`-Zeilen mit `serial_unit_id = <id>`, sortiert nach `occurred_at`. Dieser Pfad enthält alle Ereignistypen: Lager-, Lifecycle- und Mietbewegungen gemischt. Eine explizite Projektion „Wer hat die Einheit in welchem Zeitfenster gehalten?" — d. h. eine Halter-Zeitleiste aus nur den `rental_out`/`rental_return`/`owner_type`-Paaren — ist kein definierter Abfragepfad in ADR-0015. Für den Verfügbarkeitskalender (BAC-1) und die Rückgabehistorie muss diese Projektion entweder als dedizierter API-Endpunkt oder als materialisierte Sicht spezifiziert werden. Ohne diese Spezifikation implementieren verschiedene Entwickler inkonsistente Auswertungslogiken.
+
+---
+
+## Änderungsprotokoll
+- 2026-07-04: Anpassung an ADR-0021: Preis-/Bestands-/GTIN-Schlüsselung auf ProductVariant.
+- 2026-07-04: Lücke 6 (ADR-0021-Restlücke) geschlossen: `SerialUnit`/`Batch` (ADR-0012 Amendment 2026-07-04), `StockBalance`/`StockReservation` (ADR-0010 Amendment 2026-07-04) tragen nun einen obligatorischen FK auf `ProductVariant` statt `Product`; `RentalAssignment` bleibt feldseitig unverändert, da es keinen direkten `Product`-FK trägt und die Variantenschlüsselung transitiv über `SerialUnit`/`StockReservation` wirkt (ADR-0013 Amendment 2026-07-04). Use-Case-Text und Diagramm entsprechend auf `ProductVariant` umgestellt: Verfügbarkeits-Endpunkt `GET /api/variants/{id}/serial-units/availability/` (statt `/api/products/{id}/...`), `StockReservation`-Insert trägt `variant` statt `product`. Lücke 6 aus der Gaps-Liste entfernt.
