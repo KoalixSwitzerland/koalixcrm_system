@@ -20,31 +20,30 @@ Der Produktmanager öffnet die Produktdetailseite eines Fertigprodukts und klick
 
 ## Hauptablauf
 
-```plantuml
-@startuml UC-0005-Hauptablauf
-actor "Produktmanager" as PM
-participant "Frontend\n(Next.js)" as FE
-participant "Backend\n(DRF)" as BE
-database "Datenbank" as DB
+```mermaid
+sequenceDiagram
+    actor PM as "Produktmanager"
+    participant FE as "Frontend<br/>(Next.js)"
+    participant BE as "Backend<br/>(DRF)"
+    participant DB as "Datenbank"
 
-PM -> FE : Klick auf „Stückliste anlegen"
-FE -> BE : POST /api/bills-of-materials/ {product_id}
-BE -> BE : kind = MANUFACTURED_GOOD prüfen
-BE -> DB : INSERT BillOfMaterials (workspace-scoped)
-DB --> BE : BOM-ID
-BE --> FE : 201 Created — BillOfMaterials
+    PM->>FE: Klick auf „Stückliste anlegen"
+    FE->>BE: POST /api/bills-of-materials/ {product_id}
+    BE->>BE: kind = MANUFACTURED_GOOD prüfen
+    BE->>DB: INSERT BillOfMaterials (workspace-scoped)
+    DB-->>BE: BOM-ID
+    BE-->>FE: 201 Created — BillOfMaterials
 
-FE -> PM : Leere Stücklistenansicht anzeigen
+    FE->>PM: Leere Stücklistenansicht anzeigen
 
-PM -> FE : Komponente hinzufügen\n(Komponenten-Produkt, Menge, Einheit,\nAusschuss-%, optional Alternativkomponente)
-FE -> BE : POST /api/bom-items/\n{bom_id, component_product_id, quantity,\nunit_id, scrap_pct?, alt_product_id?}
-BE -> BE : Selbstreferenz prüfen,\nWorkspace-Kontext prüfen
-BE -> DB : INSERT BomItem
-DB --> BE : BomItem-ID
-BE --> FE : 201 Created — BomItem
+    PM->>FE: Komponente hinzufügen<br/>(Komponenten-Produkt, Menge, Einheit,<br/>Ausschuss-%, optional Alternativkomponente)
+    FE->>BE: POST /api/bom-items/<br/>{bom_id, component_product_id, quantity,<br/>unit_id, scrap_pct?, alt_product_id?}
+    BE->>BE: Selbstreferenz prüfen,<br/>Workspace-Kontext prüfen
+    BE->>DB: INSERT BomItem
+    DB-->>BE: BomItem-ID
+    BE-->>FE: 201 Created — BomItem
 
-FE -> PM : Komponente in Stücklistentabelle anzeigen
-@enduml
+    FE->>PM: Komponente in Stücklistentabelle anzeigen
 ```
 
 ## Alternativablauf A: Falscher kind-Wert

@@ -20,37 +20,36 @@ Der Produktmanager öffnet die Produktdetailseite und navigiert zum Attributbere
 
 ## Hauptablauf
 
-```plantuml
-@startuml UC-0002-Hauptablauf
-actor "Produktmanager" as PM
-participant "Frontend\n(Next.js)" as FE
-participant "Backend\n(DRF)" as BE
-database "Datenbank" as DB
+```mermaid
+sequenceDiagram
+    actor PM as "Produktmanager"
+    participant FE as "Frontend<br/>(Next.js)"
+    participant BE as "Backend<br/>(DRF)"
+    participant DB as "Datenbank"
 
-PM -> FE : Produktdetailseite öffnen
-FE -> BE : GET /api/products/{id}/attribute-set/
-BE -> DB : SELECT AttributeSet, AttributeGroup,\nAttributeDefinition für ClassificationNode\nund kind (workspace-gefiltert + global)
-DB --> BE : Feldliste mit Typen, Pflichtfeldflag,\nValidierungsregeln, Reihenfolge
-BE --> FE : 200 OK — AttributeSet-Metadaten
+    PM->>FE: Produktdetailseite öffnen
+    FE->>BE: GET /api/products/{id}/attribute-set/
+    BE->>DB: SELECT AttributeSet, AttributeGroup,<br/>AttributeDefinition für ClassificationNode<br/>und kind (workspace-gefiltert + global)
+    DB-->>BE: Feldliste mit Typen, Pflichtfeldflag,<br/>Validierungsregeln, Reihenfolge
+    BE-->>FE: 200 OK — AttributeSet-Metadaten
 
-FE -> BE : GET /api/products/{id}/attribute-values/
-BE -> DB : SELECT aus getypten Wertetabellen\n(workspace-gefiltert)
-DB --> BE : bestehende Attributwerte
-BE --> FE : 200 OK — Attributwerte
+    FE->>BE: GET /api/products/{id}/attribute-values/
+    BE->>DB: SELECT aus getypten Wertetabellen<br/>(workspace-gefiltert)
+    DB-->>BE: bestehende Attributwerte
+    BE-->>FE: 200 OK — Attributwerte
 
-FE -> PM : Dynamisches Attributformular anzeigen\n(Felder aus AttributeSet, Werte vorausgefüllt)
-PM -> FE : Attributwerte eingeben oder ändern
+    FE->>PM: Dynamisches Attributformular anzeigen<br/>(Felder aus AttributeSet, Werte vorausgefüllt)
+    PM->>FE: Attributwerte eingeben oder ändern
 
-FE -> BE : PATCH /api/products/{id}/attribute-values/\n{attribute_definition_id, value, unit?}
-BE -> BE : Datentyp prüfen,\nValidierungsregeln anwenden
-BE -> DB : UPSERT in getypte Wertetabelle\n(z. B. ProductAttributeDecimal)
-DB --> BE : OK
-BE -> DB : JSONB-Spiegel aktualisieren\n(synchron oder via Celery)
-DB --> BE : OK
-BE --> FE : 200 OK — aktualisierte Attributwerte
+    FE->>BE: PATCH /api/products/{id}/attribute-values/<br/>{attribute_definition_id, value, unit?}
+    BE->>BE: Datentyp prüfen,<br/>Validierungsregeln anwenden
+    BE->>DB: UPSERT in getypte Wertetabelle<br/>(z. B. ProductAttributeDecimal)
+    DB-->>BE: OK
+    BE->>DB: JSONB-Spiegel aktualisieren<br/>(synchron oder via Celery)
+    DB-->>BE: OK
+    BE-->>FE: 200 OK — aktualisierte Attributwerte
 
-FE -> PM : Erfolgsmeldung anzeigen
-@enduml
+    FE->>PM: Erfolgsmeldung anzeigen
 ```
 
 ## Alternativablauf A: Validierungsfehler

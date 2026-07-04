@@ -28,42 +28,41 @@ Eine Lieferung mit Lieferschein trifft ein; der Wareneingangs-Verantwortliche er
 
 ## Hauptablauf
 
-```plantuml
-@startuml UC-0010-Hauptablauf
-actor "Wareneingangs-\nVerantwortlicher" as WV
-participant "Frontend\n(Next.js)" as FE
-participant "Backend\n(DRF)" as BE
-database "Datenbank" as DB
+```mermaid
+sequenceDiagram
+    actor WV as "Wareneingangs-<br/>Verantwortlicher"
+    participant FE as "Frontend<br/>(Next.js)"
+    participant BE as "Backend<br/>(DRF)"
+    participant DB as "Datenbank"
 
-WV -> FE : Lieferschein-Payload übermitteln\n(strukturierte Positionsliste)
-FE -> BE : POST /api/stock/goods-receipts/\n{supplier?, positions: [{product_variant_id, qty_expected,\nuom, batch_number?, expiry_date?}, …]}
-BE -> BE : Alle product_variant_id gegen Workspace-Katalog\nvalidieren (ADR-0021: ProductVariant + GTIN)
-BE -> DB : INSERT GoodsReceipt {status=IN_PROGRESS,\nWorkspace-scoped};\nINSERT GoodsReceiptPosition je Position
-DB --> BE : GoodsReceipt-ID
-BE --> FE : 201 Created — GoodsReceipt\n{id, status=IN_PROGRESS, positions[]}
-FE -> WV : GoodsReceipt anzeigen;\nPositionen-Liste mit Soll-Mengen
+    WV->>FE: Lieferschein-Payload übermitteln<br/>(strukturierte Positionsliste)
+    FE->>BE: POST /api/stock/goods-receipts/<br/>{supplier?, positions: [{product_variant_id, qty_expected,<br/>uom, batch_number?, expiry_date?}, …]}
+    BE->>BE: Alle product_variant_id gegen Workspace-Katalog<br/>validieren (ADR-0021: ProductVariant + GTIN)
+    BE->>DB: INSERT GoodsReceipt {status=IN_PROGRESS,<br/>Workspace-scoped};<br/>INSERT GoodsReceiptPosition je Position
+    DB-->>BE: GoodsReceipt-ID
+    BE-->>FE: 201 Created — GoodsReceipt<br/>{id, status=IN_PROGRESS, positions[]}
+    FE->>WV: GoodsReceipt anzeigen;<br/>Positionen-Liste mit Soll-Mengen
 
-loop Für jede Position
-    WV -> FE : Produkt-QR-Code der gelieferten Einheit scannen
-    FE -> BE : POST /api/stock/scan/\n{identifier: "<GTIN>", identifier_type: "AUTO"}
-    BE -> BE : Scan gegen ProductVariant.gtin auflösen\n(ADR-0021);\nGoodsReceiptPosition-Treffer prüfen\n(product_variant_id + GoodsReceipt-ID)
-    BE -> DB : Lagerplatzvorschlag berechnen:\n1. Stellplatz mit gleicher ProductVariant + Charge bevorzugen;\n2. sonst: freier Stellplatz nächster passender Größe\n(ADR-0009: Location-Hierarchie + is_active)
-    DB --> BE : Vorgeschlagener Location-Knoten + Breadcrumb
-    BE --> FE : Scan-Treffer: ProductVariant bestätigt,\nLagerplatzvorschlag (Location-ID + Breadcrumb)
-    FE -> WV : Produktvariante + Lagerplatz-Vorschlag anzeigen
-    WV -> FE : Vorgeschlagenen Lagerplatz bestätigen\nODER anderen Lagerplatz auswählen
-    FE -> BE : POST /api/stock/movements/\n{event_type: OBJECT_EVENT,\nbusiness_step: receiving,\nproduct_variant: <id>, batch?: <id_oder_neu>,\ndestination_location: <location_id>,\nqty: <qty_expected>,\ndocument_type: GoodsReceipt,\ndocument_id: <GoodsReceipt.id>,\nidempotency_key: <UUID>}
-    BE -> DB : INSERT StockMovement\n{business_step=receiving,\nproduct_variant=<id>,\ndestination_location=<gewählter Lagerplatz>,\ndocument_id=GoodsReceipt.id,\noccurred_at=jetzt};\nsynchrones UPDATE StockBalance\n(qty_on_hand += qty_expected; ADR-0011);\nggf. INSERT Batch bei neuem Chargeneintrag\n(ADR-0012);\nGoodsReceiptPosition.status = CONFIRMED
-    DB --> BE : StockMovement-ID
-    BE --> FE : 201 Created — Buchung bestätigt;\nGoodsReceiptPosition-Status aktualisiert
-    FE -> WV : Position als eingebucht markieren
-end
+    loop Für jede Position
+        WV->>FE: Produkt-QR-Code der gelieferten Einheit scannen
+        FE->>BE: POST /api/stock/scan/<br/>{identifier: "&lt;GTIN&gt;", identifier_type: "AUTO"}
+        BE->>BE: Scan gegen ProductVariant.gtin auflösen<br/>(ADR-0021);<br/>GoodsReceiptPosition-Treffer prüfen<br/>(product_variant_id + GoodsReceipt-ID)
+        BE->>DB: Lagerplatzvorschlag berechnen:<br/>1. Stellplatz mit gleicher ProductVariant + Charge bevorzugen;<br/>2. sonst: freier Stellplatz nächster passender Größe<br/>(ADR-0009: Location-Hierarchie + is_active)
+        DB-->>BE: Vorgeschlagener Location-Knoten + Breadcrumb
+        BE-->>FE: Scan-Treffer: ProductVariant bestätigt,<br/>Lagerplatzvorschlag (Location-ID + Breadcrumb)
+        FE->>WV: Produktvariante + Lagerplatz-Vorschlag anzeigen
+        WV->>FE: Vorgeschlagenen Lagerplatz bestätigen<br/>ODER anderen Lagerplatz auswählen
+        FE->>BE: POST /api/stock/movements/<br/>{event_type: OBJECT_EVENT,<br/>business_step: receiving,<br/>product_variant: &lt;id&gt;, batch?: &lt;id_oder_neu&gt;,<br/>destination_location: &lt;location_id&gt;,<br/>qty: &lt;qty_expected&gt;,<br/>document_type: GoodsReceipt,<br/>document_id: &lt;GoodsReceipt.id&gt;,<br/>idempotency_key: &lt;UUID&gt;}
+        BE->>DB: INSERT StockMovement<br/>{business_step=receiving,<br/>product_variant=&lt;id&gt;,<br/>destination_location=&lt;gewählter Lagerplatz&gt;,<br/>document_id=GoodsReceipt.id,<br/>occurred_at=jetzt};<br/>synchrones UPDATE StockBalance<br/>(qty_on_hand += qty_expected; ADR-0011);<br/>ggf. INSERT Batch bei neuem Chargeneintrag<br/>(ADR-0012);<br/>GoodsReceiptPosition.status = CONFIRMED
+        DB-->>BE: StockMovement-ID
+        BE-->>FE: 201 Created — Buchung bestätigt;<br/>GoodsReceiptPosition-Status aktualisiert
+        FE->>WV: Position als eingebucht markieren
+    end
 
-BE -> DB : Alle GoodsReceiptPositions CONFIRMED?\n→ UPDATE GoodsReceipt.status = COMPLETED
-DB --> BE : OK
-BE --> FE : GoodsReceipt.status = COMPLETED
-FE -> WV : Wareneingang abgeschlossen
-@enduml
+    BE->>DB: Alle GoodsReceiptPositions CONFIRMED?<br/>→ UPDATE GoodsReceipt.status = COMPLETED
+    DB-->>BE: OK
+    BE-->>FE: GoodsReceipt.status = COMPLETED
+    FE->>WV: Wareneingang abgeschlossen
 ```
 
 ---

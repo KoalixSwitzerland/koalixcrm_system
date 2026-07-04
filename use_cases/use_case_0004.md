@@ -21,28 +21,27 @@ Der Produktmanager navigiert zum Preisbereich der Produktdetailseite oder zur ze
 
 ## Hauptablauf
 
-```plantuml
-@startuml UC-0004-Hauptablauf
-actor "Produktmanager" as PM
-participant "Frontend\n(Next.js)" as FE
-participant "Backend\n(DRF)" as BE
-database "Datenbank" as DB
+```mermaid
+sequenceDiagram
+    actor PM as "Produktmanager"
+    participant FE as "Frontend<br/>(Next.js)"
+    participant BE as "Backend<br/>(DRF)"
+    participant DB as "Datenbank"
 
-PM -> FE : Preisliste anlegen
-FE -> BE : POST /api/price-lists/ {name, channel?, segment?}
-BE -> DB : INSERT PriceList (workspace-scoped)
-DB --> BE : PriceList-ID
-BE --> FE : 201 Created — PriceList
+    PM->>FE: Preisliste anlegen
+    FE->>BE: POST /api/price-lists/ {name, channel?, segment?}
+    BE->>DB: INSERT PriceList (workspace-scoped)
+    DB-->>BE: PriceList-ID
+    BE-->>FE: 201 Created — PriceList
 
-PM -> FE : Produktpreis zur Preisliste hinzufügen\n(ProductVariant, Betrag, Währung, valid_from, optional valid_to)
-FE -> BE : POST /api/product-prices/\n{product_variant_id, price_list_id, amount, currency,\nvalid_from, valid_to?}
-BE -> BE : Zeitraum-Überschneidung prüfen\n(gleiche Preisliste, gleiche ProductVariant)
-BE -> DB : INSERT ProductPrice (workspace-scoped)
-DB --> BE : ProductPrice-ID
-BE --> FE : 201 Created — ProductPrice
+    PM->>FE: Produktpreis zur Preisliste hinzufügen<br/>(ProductVariant, Betrag, Währung, valid_from, optional valid_to)
+    FE->>BE: POST /api/product-prices/<br/>{product_variant_id, price_list_id, amount, currency,<br/>valid_from, valid_to?}
+    BE->>BE: Zeitraum-Überschneidung prüfen<br/>(gleiche Preisliste, gleiche ProductVariant)
+    BE->>DB: INSERT ProductPrice (workspace-scoped)
+    DB-->>BE: ProductPrice-ID
+    BE-->>FE: 201 Created — ProductPrice
 
-FE -> PM : Preis in Preisliste anzeigen
-@enduml
+    FE->>PM: Preis in Preisliste anzeigen
 ```
 
 ## Alternativablauf A: Zeitraum-Überschneidung
