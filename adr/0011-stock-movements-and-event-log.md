@@ -126,10 +126,13 @@ Felder:
 | `source_location`     | FK → `Location` (ADR-0009, nullable)               | Quellstandort                                                     |
 | `destination_location`| FK → `Location` (ADR-0009, nullable)               | Zielstandort                                                      |
 | `product`             | FK → `Product` (ADR-0003)                          | —                                                                 |
-| `variant`             | FK → `ProductVariant` (ADR-0003, nullable)         | —                                                                 |
+| `variant`             | FK → `ProductVariant` (ADR-0003, obligatorisch)    | Nachtrag 2026-07-04 (OQ-0019): obligatorisch, vollzieht die ADR-0021-Ripple-Liste nach |
 | `batch`               | FK → `Batch` (ADR-0012, nullable)                  | —                                                                 |
 | `serial_unit`         | FK → `SerialUnit` (ADR-0012, nullable)             | —                                                                 |
 | `handling_unit`       | FK → `HandlingUnit` (ADR-0009, nullable)           | —                                                                 |
+| `parent_serial_unit`  | FK → `SerialUnit` (ADR-0012, nullable)              | Nachtrag 2026-07-04 (OQ-0020): Eltern-Einheit bei `AGGREGATION_EVENT`, gesetzt wenn Fertigprodukt-`tracking_mode = SERIAL` |
+| `parent_batch`        | FK → `Batch` (ADR-0012, nullable)                   | Nachtrag 2026-07-04 (OQ-0020): Eltern-Charge bei `AGGREGATION_EVENT`, gesetzt wenn Fertigprodukt-`tracking_mode = BATCH` |
+| `aggregation_group`   | UUID (nullable; obligatorisch bei `event_type = AGGREGATION_EVENT`) | Nachtrag 2026-07-04 (OQ-0020): gemeinsamer Gruppierungsschlüssel aller Kind-Zeilen desselben Fertigungsabschlusses, unabhängig von `tracking_mode` |
 | `qty`                 | Dezimal (nullable)                                 | Menge; null bei mengenlosem Lebenszyklus-Event (z. B. Inspektion, Kalibrierung) |
 | `uom`                 | FK → `core.Unit`                                   | —                                                                 |
 | `reason_code`         | FK → `MovementReasonCode` (global)                 | Buchungsgrund (Inventurkorrektur, Ausschuss, …)                   |
@@ -220,6 +223,10 @@ As-Built-BOM bei Fertigungsabschluss.
 (`commissioning`, `installing`, `removing`, `inspecting`, `repairing`, `decommissioning`)
 sind die Ereignisgrundlage für die in ADR-0015 definierte Unit-History-Abfrage.
 
+**ADR-0021 (Produkt-Variantengranularität):** `StockMovement.variant` ist obligatorisch
+(Amendment 2026-07-04) und vollzieht die in ADR-0021 begonnene Umstellung der
+Lager-/Serien-/Reservierungsdomäne auf `ProductVariant` als autoritativen Schlüssel nach.
+
 ## Amendments
 
 ### Amendment 2026-05-04 — OQ-0010: `disposition`-Feld und Soft-Reservierungs-Semantik
@@ -293,7 +300,95 @@ Lizenzbeschränkung: Kein neuer Closed-Source-Baustein. `inventorying` ist ein
 projektspezifischer Businessstep; GS1 EPCIS 2.0 CBV enthält diesen Wert nicht als
 Standardcode.
 
+### Amendment 2026-07-04 — OQ-0019: `variant` wird obligatorisch (ADR-0021-Ripple abgeschlossen)
+
+Die Ripple-Liste der ADR-0021-Amendments (Abschnitt „Ripple-Liste Lager-/Serien-/
+Reservierungsdomäne") schliesst `OnHandRecord`, `Batch`, `SerialUnit`, `StockBalance` und
+`StockReservation` als durchgängig auf `ProductVariant` geschlüsselt ein, führt `StockMovement`
+jedoch nicht auf. `StockMovement.variant` bleibt bislang nullable, obwohl jedes `Product`
+(ADR-0021: „jedes `Product` besitzt ≥1 `ProductVariant`") mindestens eine `ProductVariant` trägt
+und `StockMovement.product` bereits obligatorisch ist.
+
+**Korrekte Aussage:** `StockMovement.variant` trägt einen obligatorischen FK auf
+`ProductVariant`. Jede Zeile — Mengenbewegung wie mengenloses Lebenszyklus-Event — referenziert
+neben dem `product`-FK die konkrete `ProductVariant`, für die das Ereignis gilt. Dies schliesst
+die Lücke, die die Ripple-Liste offen liess: Die Schlüsselungskette (`OnHandRecord`, `Batch`,
+`SerialUnit`, `StockBalance`, `StockReservation`, `StockMovement`) ist damit vollständig auf
+`ProductVariant` konsistent.
+
+**Auflösung der Komponenten-Variante bei BOM-Buchungen (OQ-0019, gemeinsam mit ADR-0006 und
+ADR-0014):** `BomItem` (ADR-0006) bleibt Product-gekeyt; die konkrete Komponenten-`ProductVariant`
+für einen `StockMovement`-Eintrag wird ausschliesslich am Buchungspunkt aufgelöst, nach dieser
+Reihenfolge:
+
+1. Eine im Request explizit angegebene `ProductVariant` (z. B. Auswahl im Kommissionier- oder
+   Reservierungsformular).
+2. `BomItem.default_component_variant` (ADR-0006, Nachtrag 2026-07-04), sofern gesetzt.
+3. Die einzige `ProductVariant` des Komponenten-`Product`, sofern dieses genau eine trägt.
+
+Lässt sich keine dieser drei Stufen auflösen (Komponenten-`Product` trägt mehr als eine
+`ProductVariant`, kein Standardwert gesetzt, keine explizite Angabe im Request), weist das
+Backend die Buchung mit HTTP 422 ab und benennt die zur Auswahl stehenden `ProductVariant`-Werte.
+
+### Migrationsbedeutung
+
+Die v2.0.0-Migration (REQ-0007) legt die Standardvariante an, auf die bestehende
+`StockMovement`-Zeilen bei der Umstellung von nullable auf obligatorisches `variant`-Feld
+verweisen.
+
+### Amendment 2026-07-04 — OQ-0020: Eltern-Anker für `AGGREGATION_EVENT` bei nicht-serialisiertem Fertigprodukt
+
+ADR-0014 beschreibt die As-Built-Erfassung als „ein oder mehrere `AGGREGATION_EVENT`-Einträge,
+die den Eltern-`SerialUnit`-FK (Fertigprodukt) mit den Kind-Komponenten-Lots/Serien verknüpfen".
+`StockMovement` trägt jedoch je Zeile genau einen `serial_unit`- und einen `batch`-FK; kein Feld
+verknüpft mehrere Kind-Zeilen eindeutig mit derselben Eltern-Einheit desselben
+Fertigungsabschlusses, und für ein Fertigprodukt mit `tracking_mode ∈ {NONE, BATCH}` existiert
+keine Eltern-`SerialUnit`, auf die die `AGGREGATION_EVENT`-Zeilen zeigen könnten.
+
+**Korrekte Aussage:** `StockMovement` erhält drei neue Felder: `parent_serial_unit` (FK →
+`SerialUnit`, nullable), `parent_batch` (FK → `Batch`, nullable) und `aggregation_group` (UUID,
+nullable, obligatorisch bei `event_type = AGGREGATION_EVENT`). `aggregation_group` ist der
+alleinige, tracking-mode-unabhängige Gruppierungsschlüssel: Alle `AGGREGATION_EVENT`-Zeilen
+desselben Fertigungsabschlusses tragen denselben `aggregation_group`-Wert, unabhängig davon, ob
+das Fertigprodukt `tracking_mode = SERIAL`, `BATCH` oder `NONE` trägt. Die Applikationsschicht
+erzeugt genau einen `aggregation_group`-Wert je Fertigungsabschluss (nicht je `ProductionOrder`,
+da ein `ProductionOrder` mehrere Teilabschlüsse mit je eigenem `actual_qty` haben kann).
+
+Zusätzlich zum tracking-mode-unabhängigen `aggregation_group`-Schlüssel setzt die
+Applikationsschicht — sofern vorhanden — den passenden diskreten Eltern-Anker:
+
+- `tracking_mode = SERIAL`: `parent_serial_unit` trägt die Fertigprodukt-`SerialUnit` jeder
+  Kind-Zeile; direkte Abfragen „welche Kind-Zeilen gehören zu dieser Fertigprodukt-Einheit"
+  laufen ohne Umweg über `aggregation_group`.
+- `tracking_mode = BATCH`: `parent_batch` trägt die Fertigprodukt-`Batch` jeder Kind-Zeile,
+  analog zu `parent_serial_unit`.
+- `tracking_mode = NONE`: Weder `parent_serial_unit` noch `parent_batch` sind gesetzt;
+  `aggregation_group` ist der einzige Anker. As-Built-Traceability für diesen Fall liefert die
+  Menge der Kind-Komponenten-Lots/Serien des Fertigungsabschlusses, jedoch keine Verknüpfung zu
+  einer einzelnen Fertigprodukt-Einheit (es existiert keine).
+
+Diese Struktur bleibt vollständig innerhalb der bestehenden `StockMovement`-Tabelle — keine
+separate As-Built-Aggregatentität wird eingeführt; ADR-0014 hat diese Alternative bereits
+explizit abgelehnt („statt einer separaten As-Built-Tabelle"), und diese Ablehnung bleibt
+unverändert bestehen. `aggregation_group` ist bei einem späteren EPCIS-2.0-Export als Grundlage
+für `parentID` nutzbar: Bei `tracking_mode = SERIAL`/`BATCH` liefert die Fertigprodukt-Einheit
+selbst die EPCIS-`parentID`; bei `tracking_mode = NONE` mint die Exportschicht eine interne
+URN aus `aggregation_group`, da EPCIS 2.0 keinen physischen Trägeridentifikator für diesen Fall
+vorschreibt.
+
+### Migrationsbedeutung
+
+Bestehende `AGGREGATION_EVENT`-Zeilen erhalten rückwirkend einen `aggregation_group`-Wert je
+`document_id` (`ProductionOrder`)-Gruppe der v2.0.0-Migration (REQ-0007); mehrere historische
+Teilabschlüsse desselben `ProductionOrder`, die migrationsseitig nicht unterscheidbar sind,
+erhalten denselben `aggregation_group`-Wert (dokumentierte Migrationsungenauigkeit).
+
 ## Changelog
+- 2026-07-04: OQ-0019 geschlossen (gemeinsam mit ADR-0006 und ADR-0014): `variant` wird
+  obligatorisch, schliesst die ADR-0021-Ripple-Liste ab; Komponenten-Variantenauflösung bei
+  Buchung dreistufig festgelegt. OQ-0020 geschlossen (gemeinsam mit ADR-0014):
+  `parent_serial_unit`, `parent_batch` und `aggregation_group` als tracking-mode-unabhängiger
+  As-Built-Eltern-Anker eingeführt. Siehe Amendments 2026-07-04.
 - 2026-05-03: Erstentscheidung.
 - 2026-05-03: Geltungsbereich auf Lebenszyklus-Events erweitert (mengenlose Ereignisse,
   neue CBV-Businessstep-Codes). OQ-0004 geschlossen: PostgreSQL declarative Range-Partitionierung

@@ -325,3 +325,44 @@ Folgekorrektur durch den `kxcrm-requirements-engineer` (BOM-Gating auf
 - **Zuständig:** `kxcrm-architect` erstellt ADR-0017; `kxcrm-requirements-engineer` aktualisiert UC-0010 nach Entscheid.
 
 **Status:** Geschlossen (2026-05-04) — `GoodsReceipt`-Aggregat mit Status-Enum (`DRAFT`, `IN_PROGRESS`, `COMPLETED`, `CANCELLED`) und `GoodsReceiptLine`-Kindentitäten mit `line_status ∈ {PENDING, CONFIRMED, MISMATCHED}` eingeführt; COMPLETED-Übergang erzeugt synchrone `StockMovement`-Buchungen je Position. Teillieferungen sind über mehrfache Ingestion-Calls auf dasselbe IN_PROGRESS-Aggregat möglich. Siehe ADR-0017.
+
+---
+
+## OQ-0019 — Komponenten-Varianten-Auflösung zwischen BOM (Product-Ebene) und Bestandsbuchung (Variant-Ebene)
+
+- **Raised:** 2026-07-04
+- **Context:** UC-0012 (Kit kommissionieren und Fertigprodukt montieren), ADR-0006, ADR-0011, ADR-0014, ADR-0021
+- **Frage:** `BomItem` (ADR-0006, REQ-0015 AC-2) trägt einen FK auf das Komponenten-`Product`, nicht auf eine konkrete `ProductVariant`. `ProductionOrderComponent` (ADR-0014) trägt zusätzlich einen FK auf `ProductVariant`, der jedoch nullable ist. `OnHandRecord` ist seit ADR-0021 ausschließlich über `ProductVariant` autoritativ geschlüsselt, und `StockMovement.variant` (ADR-0011) bleibt laut Feldtabelle nullable — die Ripple-Liste der ADR-0021-Amendments nennt `ADR-0012` und `ADR-0010`, aber nicht `ADR-0011`. Trägt das Komponenten-`Product` eines `BomItem` mehr als eine `ProductVariant`, ist nicht definiert, welche konkrete Komponenten-`ProductVariant` beim Kit-Pick oder bei der `ProductionOrderComponent`-Reservierung für die Bestandsbuchung herangezogen wird. Soll `BomItem` einen optionalen oder verpflichtenden FK auf eine konkrete Komponenten-`ProductVariant` erhalten, oder wird `StockMovement.variant` verpflichtend gemacht und die Variantenwahl an anderer Stelle (z. B. Pick-Zeitpfad, Konfigurationsattribut auf `ProductionOrderComponent`) entschieden?
+- **Blocks:** UC-0012 Hauptablauf (Teil A und Teil B), UC-0012 BAC-5
+
+**Status:** Geschlossen (2026-07-04) — `BomItem` bleibt Product-gekeyt (unverändert gegenüber
+ADR-0006/ADR-0021); ergänzt um ein optionales, nicht-bindendes
+`default_component_variant`-Feld (ADR-0006, Nachtrag 2026-07-04). Die verbindliche
+Komponenten-Variantenauflösung bindet erst am Buchungspunkt, dreistufig: (1) explizite Angabe im
+Request, (2) `BomItem.default_component_variant`, (3) die einzige `ProductVariant` des
+Komponenten-`Product`; ohne eindeutige Auflösung weist das Backend die Buchung mit HTTP 422 ab.
+`ProductionOrderComponent.variant` (ADR-0014) und `StockMovement.variant` (ADR-0011) werden
+dazu beide obligatorisch; damit ist die von ADR-0021 offengelassene Ripple-Lücke (`ADR-0011`
+fehlte in der Ripple-Liste) geschlossen. Siehe ADR-0006, ADR-0011 und ADR-0014, je Nachtrag/
+Amendment 2026-07-04, sowie ADR-0021 §Ripple-Liste Komponenten-Variantenauflösung und
+As-Built-Anker.
+
+---
+
+## OQ-0020 — Eltern-Kind-Multiplizität von `AGGREGATION_EVENT`-Zeilen bei nicht-serialisiertem Fertigprodukt
+
+- **Raised:** 2026-07-04
+- **Context:** UC-0012 (Kit kommissionieren und Fertigprodukt montieren), ADR-0011, ADR-0014
+- **Frage:** ADR-0014 beschreibt die As-Built-Erfassung als „ein oder mehrere `AGGREGATION_EVENT`-Einträge, die den Eltern-`SerialUnit`-FK (Fertigprodukt) mit den Kind-Komponenten-Lots/Serien verknüpfen". Das `StockMovement`-Schema (ADR-0011) trägt je Zeile genau einen `serial_unit`-FK und genau einen `batch`-FK; kein Feld verknüpft mehrere Kind-Zeilen eindeutig mit derselben Eltern-Einheit desselben Fertigungsabschlusses. Trägt die Fertigprodukt-`ProductVariant` `tracking_mode ∈ {NONE, BATCH}` statt `SERIAL`, existiert kein Eltern-`SerialUnit`, auf den die `AGGREGATION_EVENT`-Zeilen zeigen könnten. Soll `StockMovement` ein Gruppierungsfeld (z. B. `parent_event_id` oder `production_order_id` als gemeinsamer Schlüssel für alle Kind-Zeilen eines Fertigungsabschlusses) erhalten, und wie wird der Eltern-Anker für nicht-serialisierte Fertigprodukte (`tracking_mode ∈ {NONE, BATCH}`) modelliert?
+- **Blocks:** UC-0012 Hauptablauf (Teil B, Fertigungsabschluss), UC-0012 BAC-3
+
+**Status:** Geschlossen (2026-07-04) — `StockMovement` erhält ein tracking-mode-unabhängiges
+Gruppierungsfeld `aggregation_group` (UUID; obligatorisch bei `event_type = AGGREGATION_EVENT`),
+das alle Kind-Zeilen desselben Fertigungsabschlusses verknüpft, unabhängig davon, ob ein
+Eltern-`SerialUnit` existiert. Ergänzend tragen die Zeilen `parent_serial_unit` (gesetzt bei
+`tracking_mode = SERIAL`) bzw. `parent_batch` (gesetzt bei `tracking_mode = BATCH`) als
+diskreten Eltern-Anker; bei `tracking_mode = NONE` ist `aggregation_group` der alleinige Anker.
+Keine separate As-Built-Aggregatentität wird eingeführt (ADR-0014 lehnt diese Alternative
+bereits ab); die Lösung bleibt vollständig innerhalb der `StockMovement`-Tabelle und ist über
+`aggregation_group` als interne URN EPCIS-2.0-`parentID`-exportfähig, auch ohne physischen
+Trägeridentifikator. Siehe ADR-0011, Amendment 2026-07-04, und ADR-0014, Nachtrag 2026-07-04.

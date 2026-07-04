@@ -15,6 +15,7 @@ Jeder Use Case enthält PlantUML-Aktivitäts- und Ablaufdiagramme in eingebettet
 | UC-0004  | Preisliste und Produktpreise verwalten                            | ADR-0005          | REQ-0011, REQ-0012            |
 | UC-0005  | Stückliste für ein Fertigprodukt pflegen                          | ADR-0006          | REQ-0015                      |
 | UC-0006  | Dienstleistungsprofil für ein SERVICE-Produkt anlegen und bearbeiten | ADR-0007       | REQ-0016                      |
+| UC-0011  | Produktfamilie mit Varianten anlegen und Attribute kaskadieren    | ADR-0021, ADR-0003, ADR-0004, ADR-0005 | REQ-0001, REQ-0002, REQ-0010, REQ-0011 |
 
 ## Lagerdomäne (ADR-0009 bis ADR-0015)
 
@@ -24,3 +25,9 @@ Jeder Use Case enthält PlantUML-Aktivitäts- und Ablaufdiagramme in eingebettet
 | UC-0008  | Komponenten-Bestandssuche mit Stellplatz-Anzeige                      | ADR-0003, ADR-0009, ADR-0010, ADR-0011                      | —        |
 | UC-0009  | Komponentenentnahme mit Bestandsbestätigung (Ad-hoc-Zykluszählung)    | ADR-0009, ADR-0010, ADR-0011, ADR-0012                      | —        |
 | UC-0010  | Wareneingang mit Lieferschein und Lagerplatzvorschlag                 | ADR-0002, ADR-0003, ADR-0009, ADR-0011, ADR-0012            | —        |
+
+## Produkt-/Lagerdomäne (spannt ADR-0006/ADR-0014 sowie ADR-0009 bis ADR-0011)
+
+| ID       | Titel                                                             | ADR-Bezug                                      | Anforderungsbezug |
+|----------|-------------------------------------------------------------------|------------------------------------------------|-------------------|
+| UC-0012  | Kit kommissionieren und Fertigprodukt montieren                       | ADR-0014, ADR-0006, ADR-0019, ADR-0021, ADR-0009, ADR-0010, ADR-0011 | REQ-0015 |

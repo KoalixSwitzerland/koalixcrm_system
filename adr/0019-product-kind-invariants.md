@@ -1,7 +1,7 @@
 # ADR-0019: Produkt-`kind`-Invarianten und Gating abhängiger Objekte
 
 ## Status
-Proposed
+Accepted
 
 ## Context
 
@@ -228,6 +228,9 @@ sind Lagertatsachen im Sperr-Set dieses ADR; ihr Vorhandensein sperrt den kind-W
 autoritative Quelle für den erweiterten BOM-Geltungsbereich.
 
 ## Changelog
+- 2026-07-04: Ratifiziert (Status: Proposed → Accepted). Validiert durch UC-0011/UC-0012, deren
+  Hauptabläufe das `kind`-Gating (Alternativablauf C, UC-0012) und die `ProductKindPolicy`
+  durchlaufen.
 - 2026-06-27: Erstentwurf (Status: Proposed). Konsolidiert die verstreuten „Applikationsschicht muss…"-Vorbehalte
   aus ADR-0006, ADR-0007, ADR-0009 und ADR-0014 in einer kanonischen Gating-Matrix und
   einer `ProductKindPolicy`-Durchsetzungsregel. Schließt OQ-0009.
