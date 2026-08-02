@@ -75,6 +75,8 @@ phase of KoalixCRM (planning, product catalog, stock management, and related bus
 - [ADR-0019: Produkt-`kind`-Invarianten und Gating abhängiger Objekte](0019-product-kind-invariants.md)
 - [ADR-0020: Gemeinsame deklarative Attributvalidierung zwischen Backend und Frontend](0020-shared-declarative-attribute-validation.md)
 - [ADR-0021: Produkt-Variantengranularität — Topologie, Schlüsselung und Attribut-Vererbungskaskade](0021-produkt-variantengranularitaet-topologie-schluesselung-attributkaskade.md)
+- [ADR-0022: Backend Architecture — Org-Wide ADR Binding](0022-backend-architecture-org-binding.md)
+- [ADR-0023: Paginierung erfordert eine totale Ordnung](0023-pagination-ordering-totality.md)
 - [Architektur-Übersicht KoalixCRM](architecture_overview.md)
 
 ## Further decisions

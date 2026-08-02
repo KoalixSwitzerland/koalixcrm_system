@@ -195,6 +195,8 @@ nav:
       - "ADR-0019": 09_architecture_decisions/0019-product-kind-invariants.md
       - "ADR-0020": 09_architecture_decisions/0020-shared-declarative-attribute-validation.md
       - "ADR-0021": 09_architecture_decisions/0021-produkt-variantengranularitaet-topologie-schluesselung-attributkaskade.md
+      - "ADR-0022": 09_architecture_decisions/0022-backend-architecture-org-binding.md
+      - "ADR-0023": 09_architecture_decisions/0023-pagination-ordering-totality.md
       - "Architecture Overview": 09_architecture_decisions/architecture_overview.md
     - "Imported Source Documents":
       - "Migration v1.14.0 to v2.0.0": 09_architecture_decisions/QQ_IMPORT_docs-migration-v1-14-0-to-v2-0-0.md
