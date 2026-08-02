@@ -78,6 +78,19 @@ silently drop the guarantee.
   offset pagination and is not fixable server-side short of cursor pagination.
   `BaseAPIClient._get_object_list` therefore deduplicates by `id` when concatenating pages, and
   any other page-walking client must do the same.
+- **Deduplication only covers half of it.** It removes the duplicate; nothing reconstructs a row
+  that was shifted past the boundary by a delete and so appeared on no page at all. That is silent
+  data loss, and for a caller that aggregates the list it produces a confidently wrong total.
+  `BaseAPIClient._get_object_list` therefore also compares each page's `count` against the first
+  page's: a difference proves the set changed mid-walk. The check is free — the server runs that
+  COUNT per page regardless. On a mismatch the walk restarts once after a short randomised pause,
+  and if it mismatches again it raises `ListWalkIncompleteError` rather than returning a short list.
+  One retry, because this is contention rather than a transient fault: either writes are rare and
+  the retry succeeds, or they are continuous and no retry count converges, while each attempt costs
+  a full walk.
+- `count` stability is **necessary but not sufficient** — one delete plus one insert between two
+  pages leaves it unchanged while rows still shift. The check catches the common cases, not all of
+  them. It is mitigation; cursor pagination is the fix.
 - The guarantee applies to paginated responses only. Unpaginated consumers are unaffected, which is
   the correct scope: cross-page overlap is a property of pagination, not of ordering in general.
 - Appending a sort key can in principle change a query plan. In practice the appended key is the
