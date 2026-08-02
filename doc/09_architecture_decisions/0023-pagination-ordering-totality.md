@@ -171,14 +171,12 @@ worth recording rather than copying:
 
 Recording these so they are tracked rather than rediscovered:
 
-1. **§3.2 fallback `ordering` attribute** — tracked as koalixcrm#426. The org ADR requires a fixed
-   `ordering` attribute on the ViewSet as the fallback when no `?ordering=` is passed. No KoalixCRM
-   ViewSet declares one; every list falls back to `Meta.ordering`. Totality is satisfied
-   structurally by the pagination class, so this is a literal-compliance gap rather than a
-   correctness defect — but it is a gap, and the original decision's claim that "existing non-unique
-   `Meta.ordering` declarations can stay as they are" addresses totality only, not §3.2's fallback
-   requirement. Resolved by explicit per-ViewSet declaration, accepting that this is
-   review-dependent for ViewSets added later.
+1. **§3.2 fallback `ordering` attribute.** The org ADR requires a fixed `ordering` attribute on the
+   ViewSet as the fallback when no `?ordering=` is passed. No KoalixCRM ViewSet declares one; every
+   list falls back to `Meta.ordering`. Totality is satisfied structurally by the pagination class,
+   so this is a literal-compliance gap rather than a correctness defect — but it is a gap, and the
+   original decision's claim that "existing non-unique `Meta.ordering` declarations can stay as
+   they are" addresses totality only, not §3.2's fallback requirement.
 2. **Unpaginated `@action` list responses.** `SerialUnitViewSet.history`, `as_built`,
    `installed_components`, `holder_timeline` and `location_timeline` return bare arrays; DRF does
    not paginate `@action` responses unless the action paginates explicitly. §3.1's exception clause
@@ -195,18 +193,12 @@ Enabling pagination exposed that field filtering had never worked: `BaseModelVie
 parameters rather than rejecting them — an unfiltered list looked like a filtered one.
 
 Org ADR-0001 §3.3 is one sentence ("Filtering is done via query parameters […] validated via DRF /
-django-filter") and prescribes no declaration style. The interim implementation derives the
-FilterSet from the model (`koalixcrm.shared.filters.AutoFilterBackend`), extending the reasoning of
-§3.4's structural-default enforcement to filtering. WFS instead declares `filterset_fields` or a
-`FilterSet` per ViewSet and treats each filter as a documented API contract (see WFS
-`architecture/api_contract_reassignment_signature_filters.md`). Both satisfy §3.3.
-
-**Decision (2026-08-02): KoalixCRM aligns with WFS practice** — explicit per-ViewSet declaration.
-Tracked as koalixcrm#427; the derived backend stands until that conversion lands. The deciding
-argument is that a filter, once published in the OpenAPI schema, is API surface consumers depend on
-and cannot easily be withdrawn: derivation lets the published contract change as a side effect of a
-model edit, with no review step. The counter-argument is recorded rather than discarded —
-per-ViewSet declaration is exactly the review-dependent pattern §3.4 rejects for ordering, and the
-dead `filterset_fields` on `TaskViewSet` (which never took effect, because `filter_backends`
-overrode `DEFAULT_FILTER_BACKENDS`) is local evidence that it erodes here too. The conversion should
-therefore carry a test that fails when a ViewSet declares no filterset at all.
+django-filter") and prescribes no declaration style. KoalixCRM derives the FilterSet from the model
+(`koalixcrm.shared.filters.AutoFilterBackend`), extending the reasoning of §3.4's structural-default
+enforcement to filtering. **This diverges from WFS practice**, which declares `filterset_fields` or
+a `FilterSet` per ViewSet and treats each filter as a documented API contract (see WFS
+`architecture/api_contract_reassignment_signature_filters.md`). Both satisfy §3.3. The divergence is
+deliberate and is flagged here for the org standard to settle, since a filter, once published in the
+schema, is API surface that consumers depend on — the argument for WFS's explicitness — while
+per-ViewSet declaration is exactly the review-dependent pattern §3.4 rejects for ordering — the
+argument for derivation.
