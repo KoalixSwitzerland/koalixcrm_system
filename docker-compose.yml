@@ -39,12 +39,13 @@
 #                         credentials are neither backed up nor LLM-visible.
 #                         Defaults to KOALIXCRM_DB_DIR for native setups.
 #   KOALIXCRM_SYSTEM_DIR — Absolute path to this repo             (shell-readable, default: .)
-#   KOALIXCRM_FOP_DIR   — Absolute path to koalixcrm-fop-service repo
-#                         (only needed for unit-pdf-service / integration-pdf-service
-#                          profiles; default: ./../koalixcrm-fop-service)
-#   PDF_SERVICE_IMAGE_TAG — Container tag to pull for the pdf-service (e.g.
-#                           `v2.0.0`, `develop`, `sha-abc1234`). Default: `develop`.
-#                           Pin to a concrete version in production .env files.
+#   KOALIXCRM_FOP_DIR   — Absolute path to koalixcrm-fop-service repo. Required
+#                         for every profile that runs the Java worker
+#                         (integration / e2e / dev, plus unit-pdf-service and
+#                         integration-pdf-service): `pdf-service` is BUILT from
+#                         this tree, not pulled from GHCR, so the running worker
+#                         always matches the checked-out sources.
+#                         Default: ./../koalixcrm-fop-service
 #
 # Optional daemon-side overrides (only set if your shell and Docker daemon
 # see different filesystem paths — e.g. WSL shell + Docker Desktop on Windows):
@@ -172,6 +173,10 @@ services:
       - SQLITE_DB_FILE=/db/db.sqlite3
       # --- Local S3 (MinIO) ---
       - S3_ENDPOINT_URL=http://minio:9000
+      # Browser-reachable MinIO endpoint. Presigned download URLs must be
+      # signed against the host the browser calls (SigV4 signs Host), so it
+      # cannot be rewritten afterwards. Unset in production.
+      - S3_PUBLIC_ENDPOINT_URL=http://localhost:${MINIO_API_PORT:-9010}
       - AWS_ACCESS_KEY_ID=minioadmin
       - AWS_SECRET_ACCESS_KEY=minioadmin123
       - AWS_REGION=us-east-1
@@ -236,6 +241,10 @@ services:
       - SQLITE_DB_FILE=/db/integration.sqlite3
       # --- Local S3 (MinIO) ---
       - S3_ENDPOINT_URL=http://minio:9000
+      # Browser-reachable MinIO endpoint. Presigned download URLs must be
+      # signed against the host the browser calls (SigV4 signs Host), so it
+      # cannot be rewritten afterwards. Unset in production.
+      - S3_PUBLIC_ENDPOINT_URL=http://localhost:${MINIO_API_PORT:-9010}
       - AWS_ACCESS_KEY_ID=minioadmin
       - AWS_SECRET_ACCESS_KEY=minioadmin123
       - AWS_REGION=us-east-1
@@ -272,13 +281,18 @@ services:
     profiles: [integration]
 
   # --- PDF export service (Java / Spring Boot) ---
-  # Replaces the Python Celery worker for the PDF-export path.
-  # Pulled as a pre-built image from GHCR. The sources and build pipeline live
+  # Replaces the Python Celery worker for the PDF-export path. The sources live
   # in KoalixSwitzerland/koalixcrm-fop-service (extracted from koalixcrm to
-  # separate Java and Python toolchains / QA). Pin a specific tag via
-  # PDF_SERVICE_IMAGE_TAG in your .env.<name> — do not rely on `latest`.
+  # separate Java and Python toolchains / QA).
+  # Built locally from the koalixcrm-fop-service working tree (see
+  # KOALIXCRM_FOP_DIR) so the running worker always matches the checked-out
+  # sources. Rebuild explicitly after changing Java sources:
+  #   docker compose --env-file .env.<name> build pdf-service
   pdf-service:
-    image: ghcr.io/koalixswitzerland/koalixcrm_pdf_service:${PDF_SERVICE_IMAGE_TAG:-develop}
+    build:
+      context: ${KOALIXCRM_FOP_HOST_DIR:-${KOALIXCRM_FOP_DIR:-./../koalixcrm-fop-service}}
+      dockerfile: Dockerfile
+    image: koalixcrm_pdf_service:local
     env_file:
       - path: ${KOALIXCRM_ENV_DIR:-${KOALIXCRM_DB_DIR:-./../koalixcrm_data}}/secrets.env
         required: true
@@ -337,6 +351,10 @@ services:
       - DB_CHOICE=sqlite3
       - SQLITE_DB_FILE=/db/db.sqlite3
       - S3_ENDPOINT_URL=http://minio:9000
+      # Browser-reachable MinIO endpoint. Presigned download URLs must be
+      # signed against the host the browser calls (SigV4 signs Host), so it
+      # cannot be rewritten afterwards. Unset in production.
+      - S3_PUBLIC_ENDPOINT_URL=http://localhost:${MINIO_API_PORT:-9010}
       - AWS_ACCESS_KEY_ID=minioadmin
       - AWS_SECRET_ACCESS_KEY=minioadmin123
       - AWS_REGION=us-east-1
@@ -461,6 +479,10 @@ services:
       - SQLITE_DB_FILE=/db/integration.sqlite3
       # --- Local S3 (MinIO) ---
       - S3_ENDPOINT_URL=http://minio:9000
+      # Browser-reachable MinIO endpoint. Presigned download URLs must be
+      # signed against the host the browser calls (SigV4 signs Host), so it
+      # cannot be rewritten afterwards. Unset in production.
+      - S3_PUBLIC_ENDPOINT_URL=http://localhost:${MINIO_API_PORT:-9010}
       - AWS_ACCESS_KEY_ID=minioadmin
       - AWS_SECRET_ACCESS_KEY=minioadmin123
       - AWS_REGION=us-east-1
@@ -521,6 +543,10 @@ services:
       - SQLITE_DB_FILE=/db/db.sqlite3
       # --- Local S3 (MinIO) ---
       - S3_ENDPOINT_URL=http://minio:9000
+      # Browser-reachable MinIO endpoint. Presigned download URLs must be
+      # signed against the host the browser calls (SigV4 signs Host), so it
+      # cannot be rewritten afterwards. Unset in production.
+      - S3_PUBLIC_ENDPOINT_URL=http://localhost:${MINIO_API_PORT:-9010}
       - AWS_ACCESS_KEY_ID=minioadmin
       - AWS_SECRET_ACCESS_KEY=minioadmin123
       - AWS_REGION=us-east-1
