@@ -177,6 +177,8 @@ services:
       # signed against the host the browser calls (SigV4 signs Host), so it
       # cannot be rewritten afterwards. Unset in production.
       - S3_PUBLIC_ENDPOINT_URL=http://localhost:${MINIO_API_PORT:-9010}
+      # Path INSIDE the container (see the legacy-templates mount).
+      - KOALIXCRM_LEGACY_TEMPLATE_DIR=/legacy-templates/templatefiles
       - AWS_ACCESS_KEY_ID=minioadmin
       - AWS_SECRET_ACCESS_KEY=minioadmin123
       - AWS_REGION=us-east-1
@@ -200,6 +202,11 @@ services:
     volumes:
       - ${KOALIXCRM_HOST_DIR:-${KOALIXCRM_DIR:-./../koalixcrm}}:/usr/src/app
       - ${KOALIXCRM_DB_HOST_DIR:-${KOALIXCRM_DB_DIR:-./../koalixcrm_data}}/db:/db
+      # Legacy v1 XSL/FOP templates, read by `seed_document_template_files`.
+      # They sit under the same data root as /db (not in the repo) because the
+      # tree they came from also held customer data. Read-only: nothing in the
+      # app writes here. Shares the data root, so only one host path to set.
+      - ${KOALIXCRM_DB_HOST_DIR:-${KOALIXCRM_DB_DIR:-./../koalixcrm_data}}/legacy-templates:/legacy-templates:ro
     working_dir: /usr/src/app
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -245,6 +252,8 @@ services:
       # signed against the host the browser calls (SigV4 signs Host), so it
       # cannot be rewritten afterwards. Unset in production.
       - S3_PUBLIC_ENDPOINT_URL=http://localhost:${MINIO_API_PORT:-9010}
+      # Path INSIDE the container (see the legacy-templates mount).
+      - KOALIXCRM_LEGACY_TEMPLATE_DIR=/legacy-templates/templatefiles
       - AWS_ACCESS_KEY_ID=minioadmin
       - AWS_SECRET_ACCESS_KEY=minioadmin123
       - AWS_REGION=us-east-1
@@ -266,6 +275,11 @@ services:
     volumes:
       - ${KOALIXCRM_HOST_DIR:-${KOALIXCRM_DIR:-./../koalixcrm}}:/usr/src/app
       - ${KOALIXCRM_DB_HOST_DIR:-${KOALIXCRM_DB_DIR:-./../koalixcrm_data}}/db:/db
+      # Legacy v1 XSL/FOP templates, read by `seed_document_template_files`.
+      # They sit under the same data root as /db (not in the repo) because the
+      # tree they came from also held customer data. Read-only: nothing in the
+      # app writes here. Shares the data root, so only one host path to set.
+      - ${KOALIXCRM_DB_HOST_DIR:-${KOALIXCRM_DB_DIR:-./../koalixcrm_data}}/legacy-templates:/legacy-templates:ro
     working_dir: /usr/src/app
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -355,6 +369,8 @@ services:
       # signed against the host the browser calls (SigV4 signs Host), so it
       # cannot be rewritten afterwards. Unset in production.
       - S3_PUBLIC_ENDPOINT_URL=http://localhost:${MINIO_API_PORT:-9010}
+      # Path INSIDE the container (see the legacy-templates mount).
+      - KOALIXCRM_LEGACY_TEMPLATE_DIR=/legacy-templates/templatefiles
       - AWS_ACCESS_KEY_ID=minioadmin
       - AWS_SECRET_ACCESS_KEY=minioadmin123
       - AWS_REGION=us-east-1
@@ -368,6 +384,11 @@ services:
     volumes:
       - ${KOALIXCRM_HOST_DIR:-${KOALIXCRM_DIR:-./../koalixcrm}}:/usr/src/app
       - ${KOALIXCRM_DB_HOST_DIR:-${KOALIXCRM_DB_DIR:-./../koalixcrm_data}}/db:/db
+      # Legacy v1 XSL/FOP templates, read by `seed_document_template_files`.
+      # They sit under the same data root as /db (not in the repo) because the
+      # tree they came from also held customer data. Read-only: nothing in the
+      # app writes here. Shares the data root, so only one host path to set.
+      - ${KOALIXCRM_DB_HOST_DIR:-${KOALIXCRM_DB_DIR:-./../koalixcrm_data}}/legacy-templates:/legacy-templates:ro
     working_dir: /usr/src/app
     depends_on:
       minio-setup:
@@ -483,6 +504,8 @@ services:
       # signed against the host the browser calls (SigV4 signs Host), so it
       # cannot be rewritten afterwards. Unset in production.
       - S3_PUBLIC_ENDPOINT_URL=http://localhost:${MINIO_API_PORT:-9010}
+      # Path INSIDE the container (see the legacy-templates mount).
+      - KOALIXCRM_LEGACY_TEMPLATE_DIR=/legacy-templates/templatefiles
       - AWS_ACCESS_KEY_ID=minioadmin
       - AWS_SECRET_ACCESS_KEY=minioadmin123
       - AWS_REGION=us-east-1
@@ -497,6 +520,11 @@ services:
     volumes:
       - ${KOALIXCRM_HOST_DIR:-${KOALIXCRM_DIR:-./../koalixcrm}}:/usr/src/app
       - ${KOALIXCRM_DB_HOST_DIR:-${KOALIXCRM_DB_DIR:-./../koalixcrm_data}}/db:/db
+      # Legacy v1 XSL/FOP templates, read by `seed_document_template_files`.
+      # They sit under the same data root as /db (not in the repo) because the
+      # tree they came from also held customer data. Read-only: nothing in the
+      # app writes here. Shares the data root, so only one host path to set.
+      - ${KOALIXCRM_DB_HOST_DIR:-${KOALIXCRM_DB_DIR:-./../koalixcrm_data}}/legacy-templates:/legacy-templates:ro
     working_dir: /usr/src/app
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -547,6 +575,8 @@ services:
       # signed against the host the browser calls (SigV4 signs Host), so it
       # cannot be rewritten afterwards. Unset in production.
       - S3_PUBLIC_ENDPOINT_URL=http://localhost:${MINIO_API_PORT:-9010}
+      # Path INSIDE the container (see the legacy-templates mount).
+      - KOALIXCRM_LEGACY_TEMPLATE_DIR=/legacy-templates/templatefiles
       - AWS_ACCESS_KEY_ID=minioadmin
       - AWS_SECRET_ACCESS_KEY=minioadmin123
       - AWS_REGION=us-east-1
@@ -573,6 +603,11 @@ services:
     volumes:
       - ${KOALIXCRM_HOST_DIR:-${KOALIXCRM_DIR:-./../koalixcrm}}:/usr/src/app
       - ${KOALIXCRM_DB_HOST_DIR:-${KOALIXCRM_DB_DIR:-./../koalixcrm_data}}/db:/db
+      # Legacy v1 XSL/FOP templates, read by `seed_document_template_files`.
+      # They sit under the same data root as /db (not in the repo) because the
+      # tree they came from also held customer data. Read-only: nothing in the
+      # app writes here. Shares the data root, so only one host path to set.
+      - ${KOALIXCRM_DB_HOST_DIR:-${KOALIXCRM_DB_DIR:-./../koalixcrm_data}}/legacy-templates:/legacy-templates:ro
       - allure_results:/allure-results
       - allure_report:/allure-report
     working_dir: /usr/src/app

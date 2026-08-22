@@ -78,6 +78,7 @@ phase of KoalixCRM (planning, product catalog, stock management, and related bus
 - [ADR-0022: Backend Architecture — Org-Wide ADR Binding](0022-backend-architecture-org-binding.md)
 - [ADR-0023: Paginierung erfordert eine totale Ordnung](0023-pagination-ordering-totality.md)
 - [ADR-0024: Stammdaten-Governance — kanonischer Kern, mandantenspezifische Peripherie](0024-master-data-governance-canonical-core-tenant-periphery.md)
+- [ADR-0025: Autoritätssignale bei föderierter Identität — Namensraum per Konstruktion, Grant statt Gruppenname](0025-federated-identity-authority-signals.md)
 - [Architektur-Übersicht KoalixCRM](architecture_overview.md)
 
 ## Further decisions
